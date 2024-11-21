@@ -26,7 +26,6 @@ class CoverArtDisplayFrame(customtkinter.CTkFrame):
         except FileNotFoundError:
             self._default_light_image = None
             print(f'Error: cannot find {self.__default_cover_art_light_image_path}')
-
         try:
             self._default_dark_image = PIL.Image.open(self.__default_cover_art_dark_image_path)
         except FileNotFoundError:
@@ -164,6 +163,8 @@ class AudioPlayerControllerFrame(customtkinter.CTkFrame):
                     self._audio.rewind()
                     break
                 stream.write(data)
+
+            p.terminate()
         except:
             print('Error: cannot play the audio')
             return
@@ -182,7 +183,7 @@ class AudioPlayerControllerFrame(customtkinter.CTkFrame):
         self.__load_icon(self._audio_pose_button, pose_button_light_image_path, pose_button_dark_image_path)
         self.__load_icon(self._audio_forward_button, forward_button_light_image_path, forward_button_dark_image_path)
         self.__load_icon(self._audio_backward_button, backward_button_light_image_path, backward_button_dark_image_path)
-        
+
     def __load_icon(self, button:customtkinter.CTkButton, light_path:str, dark_icon_path:str):
         try:
             light_image = PIL.Image.open(light_path)
@@ -221,7 +222,7 @@ class FileDialogFrame(customtkinter.CTkFrame):
         input_path = customtkinter.filedialog.askopenfilename(filetypes=[('Audio File', '*.wav')])
         if input_path == None:
             return
-        
+
         self._input_path_entry.configure(state='normal')
         self._input_path_entry.delete(0, customtkinter.END)
         self._input_path_entry.insert(0, input_path)

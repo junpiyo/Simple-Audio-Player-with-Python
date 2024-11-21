@@ -6,7 +6,8 @@ from mutagen.id3 import ID3
 from pydub import AudioSegment
 from io import BytesIO
 import os
-
+from audio import Audio, AudioTag, AudioPlayer, AudioPlayerState
+from threading import Thread, Lock
 
 MAIN_WINDOW_HEIGHT = 600
 MAIN_WINDOW_WIDTH = 400
@@ -83,92 +84,20 @@ class CoverArtDisplayFrame(customtkinter.CTkFrame):
         self._audio_album_and_artist_label.configure(text=f'{album}/{artist}')
 
 
-class AudioTag():
-    def __init__(self, cover_art:PIL.Image=None, album:str=None, artist:str=None, title:str=None):
-        self.__cover_art = cover_art
-        self.__album = album
-        self.__artist = artist
-        self.__title = title
-
-    @property
-    def cover_art(self):
-        return self.__cover_art
-    @property
-    def album(self):
-        return self.__album
-    @property
-    def artist(self):
-        return self.__artist
-    @property
-    def title(self):
-        return self.__title
-
-
-class Audio():
-    def __init__(self, nchannels:int, samplewidth:int, framerate:int, frames:bytes, album:str=None, artist:str=None, title:str=None):
-        self.__nchannels = nchannels
-        self.__samplewidth = samplewidth
-        self.__framerate = framerate
-        self.__frames = frames
-        self.__nframes = round(len(frames) / samplewidth / nchannels)
-        self.__current_pos = 0
-
-    def read_frames(self, n:int) -> bytes: # returns at most n frames of audio
-        if n < 0:
-            return self.__frames
-
-        c = self.__samplewidth * self.__nchannels
-        start = round(self.__current_pos * c)
-        end = start + round(n * c)
-        self.__current_pos = self.__current_pos + n
-
-        return self.__frames[start:end]
-
-    def rewind(self):
-        self.__current_pos = 0
-
-    @property
-    def nchannels(self):
-        return self.__nchannels
-    @property
-    def samplewidth(self):
-        return self.__samplewidth
-    @property
-    def framerate(self):
-        return self.__framerate
-    @property
-    def samplewidth(self):
-        return self.__samplewidth
-    @property
-    def nframes(self):
-        return self.__nframes
-    @property
-    def current_pos(self):
-        return self.__current_pos
-    @property
-    def frames(self):
-        return self.__frames
-
-    @current_pos.setter
-    def current_pos(self, pos:int): # seeks to the specified position
-        if pos >= self.__nframes:
-            self.__current_pos = self.__nframes
-        else:
-            self.__current_pos = pos
-
-
 class ControllerFrame(customtkinter.CTkFrame):
     def __init__(self, master, **kwargs):
         super().__init__(master, **kwargs)
-        self._audio = None
 
+        self._player = AudioPlayer()
+
+        # Widgets
         self._audio_play_button = customtkinter.CTkButton(
             self,
             image=None, hover=True,
             text='Play', font=(FONT_TYPE, FONT_SIZE+2, 'normal'),
             height=40, width=40, corner_radius=6,
             state="disabled",
-            command=lambda: self.__play()
+            command=self.__play
         )
         self._audio_pose_button = customtkinter.CTkButton(
             self,
@@ -176,7 +105,7 @@ class ControllerFrame(customtkinter.CTkFrame):
             text="Pose", font=(FONT_TYPE, FONT_SIZE+2, 'normal'),
             height=40, width=40, corner_radius=6,
             state="disabled",
-            command=lambda: print('not implemented')
+            command=self.__pose
         )
         self._audio_forward_button = customtkinter.CTkButton(
             self,
@@ -184,7 +113,7 @@ class ControllerFrame(customtkinter.CTkFrame):
             text=">>", font=(FONT_TYPE, FONT_SIZE+2, 'normal'),
             height=40, width=40, corner_radius=6,
             state="disabled",
-            command=lambda: print('not implemented')
+            command=self.__forward
         )
         self._audio_backward_button = customtkinter.CTkButton(
             self,
@@ -192,7 +121,7 @@ class ControllerFrame(customtkinter.CTkFrame):
             text="<<", font=(FONT_TYPE, FONT_SIZE+2, 'normal'),
             height=40, width=40, corner_radius=6,
             state="disabled",
-            command=lambda: print('not implemented')
+            command=self.__backward
         )
 
         self.grid_columnconfigure(0, weight=1)
@@ -212,23 +141,36 @@ class ControllerFrame(customtkinter.CTkFrame):
         self._audio_pose_button.configure(state='normal')
         self._audio_backward_button.configure(state='normal')
         self._audio_forward_button.configure(state='normal')
+        self._player.load(audio)
 
     def __play(self):
-        try:
-            p = pyaudio.PyAudio()
-            stream = p.open(format=p.get_format_from_width(self._audio.samplewidth), channels=self._audio.nchannels, rate=self._audio.framerate, output=True)
-            self._audio.rewind()
-            while True:
-                data = self._audio.read_frames(CHUNK_SIZE)
-                if len(data) == 0:
-                    self._audio.rewind()
-                    break
-                stream.write(data)
-
-            p.terminate()
-        except:
-            print('Error: cannot play the audio')
+        state = self._player.state
+        if state == AudioPlayerState.PLAYING:
             return
+        if state == AudioPlayerState.NOT_READY:
+            return
+
+        self._player.state = AudioPlayerState.PLAYING
+        player_thread = Thread(target=self._player.play, daemon=True)
+        player_thread.start()
+
+    def __pose(self):
+        state = self._player.state
+        if state == AudioPlayerState.NOT_READY:
+            return
+        if state == AudioPlayerState.PLAYING:
+            self._player.state = AudioPlayerState.POSED
+
+    def __forward(self):
+        state = self._player.state
+        if state == AudioPlayerState.NOT_READY:
+            return
+        self._player.forward()
+
+    def __backward(self):
+        state = self._player.state
+        if state == AudioPlayerState.NOT_READY:
+            return     
 
     def __load_icons(self):
         play_button_light_image_path = "../Image/play_light.png"
