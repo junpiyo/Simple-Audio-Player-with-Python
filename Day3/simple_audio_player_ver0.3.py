@@ -1,13 +1,13 @@
 import customtkinter
 import PIL.Image
 import wave
-import pyaudio
 from mutagen.id3 import ID3
 from pydub import AudioSegment
 from io import BytesIO
 import os
 from audio import Audio, AudioTag, AudioPlayer, AudioPlayerState
-from threading import Thread, Lock
+from threading import Thread
+# from multiprocessing import Process
 
 MAIN_WINDOW_HEIGHT = 600
 MAIN_WINDOW_WIDTH = 400
@@ -41,7 +41,7 @@ class CoverArtDisplayFrame(customtkinter.CTkFrame):
         self._cover_art_display_label = customtkinter.CTkLabel(
             self,
             width=self.__cover_art_width, height=self.__cover_art_height, corner_radius=6,
-            font=(FONT_TYPE, FONT_SIZE, 'normal'), text='The Cover art of a audio is to be displayed...'
+            font=(FONT_TYPE, FONT_SIZE, 'normal'), text='The cover art of a audio is to be displayed...'
         )
         self._audio_title_label = customtkinter.CTkLabel(self, font=(FONT_TYPE, FONT_SIZE+4, 'bold'), text='Title', anchor='center')
         self._audio_album_and_artist_label = customtkinter.CTkLabel(self, font=(FONT_TYPE, FONT_SIZE-2, 'normal'), text='Album/Artist', anchor='center')
@@ -152,10 +152,13 @@ class ControllerFrame(customtkinter.CTkFrame):
 
         self._player.state = AudioPlayerState.PLAYING
         player_thread = Thread(target=self._player.play, daemon=True)
+        # player_thread = Process(target=self._player.play, daemon=True)
         player_thread.start()
 
     def __pose(self):
         state = self._player.state
+        if state == AudioPlayerState.POSED:
+            return
         if state == AudioPlayerState.NOT_READY:
             return
         if state == AudioPlayerState.PLAYING:
@@ -170,7 +173,8 @@ class ControllerFrame(customtkinter.CTkFrame):
     def __backward(self):
         state = self._player.state
         if state == AudioPlayerState.NOT_READY:
-            return     
+            return
+        self._player.backward()  
 
     def __load_icons(self):
         play_button_light_image_path = "../Image/play_light.png"
@@ -288,7 +292,7 @@ class SimpleAudioPlayer(customtkinter.CTk):
     def __init__(self, fg_color= None, **kwargs):
         super().__init__(fg_color, **kwargs)
 
-        self.title("Simple Audio Player version 0.2")
+        self.title("Simple Audio Player version 0.3")
         self.geometry(f'{MAIN_WINDOW_WIDTH}x{MAIN_WINDOW_HEIGHT}')
 
         # frames

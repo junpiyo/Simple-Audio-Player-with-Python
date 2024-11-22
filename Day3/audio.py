@@ -2,8 +2,10 @@ import PIL.Image
 from enum import IntEnum, auto
 import pyaudio
 from threading import Lock
+# from multiprocessing import Lock
 
 CHUNK_SIZE = 1024
+TIME_OFFSET = 2 # sec
 
 
 class AudioPlayerState(IntEnum):
@@ -42,20 +44,23 @@ class Audio():
         self.__frames = frames
         self.__nframes = round(len(frames) / samplewidth / nchannels)
         self.__current_pos = 0
+        self.__lock = Lock()
 
     def read_frames(self, n:int) -> bytes: # returns at most n frames of audio
         if n < 0:
             return self.__frames
 
-        c = self.__samplewidth * self.__nchannels
-        start = round(self.__current_pos * c)
-        end = start + round(n * c)
-        self.__current_pos = self.__current_pos + n
+        with self.__lock:
+            c = self.__samplewidth * self.__nchannels
+            start = round(self.__current_pos * c)
+            end = start + round(n * c)
+            self.__current_pos = self.__current_pos + n
 
         return self.__frames[start:end]
 
     def rewind(self):
-        self.__current_pos = 0
+        with self.__lock:
+            self.__current_pos = 0
 
     @property
     def nchannels(self):
@@ -74,23 +79,24 @@ class Audio():
         return self.__nframes
     @property
     def current_pos(self):
-        return self.__current_pos
+        with self.__lock:
+            return self.__current_pos
     @property
     def frames(self):
         return self.__frames
 
     @current_pos.setter
     def current_pos(self, pos:int): # seeks to the specified position
-        if pos >= self.__nframes:
-            self.__current_pos = self.__nframes
-        else:
-            self.__current_pos = pos
+        with self.__lock:
+            if pos >= self.__nframes:
+                self.__current_pos = self.__nframes
+            else:
+                self.__current_pos = pos
 
 
 class AudioPlayer():
     def __init__(self):
         self.__state_lock = Lock()
-        self.__audio_lock = Lock()
         self.__state = AudioPlayerState.NOT_READY
 
     def load(self, audio:Audio):
@@ -103,20 +109,15 @@ class AudioPlayer():
             stream = p.open(format=p.get_format_from_width(self.__audio.samplewidth), channels=self.__audio.nchannels, rate=self.__audio.framerate, output=True)
 
             while True:
-                print(self.__state)
-                self.__state_lock.acquire()
-                state = self.__state
-                self.__state_lock.release()
-                print(self.__state)
+                with self.__state_lock:
+                    state = self.__state
                 if state != AudioPlayerState.PLAYING:
                     break
-                print(self.__state)
                 data = self.__audio.read_frames(CHUNK_SIZE)
                 if len(data) == 0:
                     self.__audio.rewind()
-                    self.__state_lock.acquire()
-                    self.__state = AudioPlayerState.READY
-                    self.__state_lock.release()
+                    with self.__state_lock:
+                        self.__state = AudioPlayerState.READY
                     break
                 stream.write(data)
             
@@ -126,19 +127,23 @@ class AudioPlayer():
             return
 
     def forward(self):
-        self.__audio_lock.acquire()
-        self.__audio.current_pos = self.__audio.current_pos + 44100
-        self.__audio_lock.release()
+        offset = round(self.__audio.framerate * TIME_OFFSET)
+        next_pos = self.__audio.current_pos + offset
+        next_pos = next_pos if next_pos < self.__audio.nframes else 0
+        self.__audio.current_pos = next_pos
+
+    def backward(self):
+        offset = round(self.__audio.framerate * TIME_OFFSET)
+        next_pos = self.__audio.current_pos - offset
+        next_pos = 0 if next_pos < 0 else next_pos
+        self.__audio.current_pos = next_pos
 
     @property
     def state(self):
-        self.__state_lock.acquire()
-        state = self.__state
-        self.__state_lock.release()
-        return state
+        with self.__state_lock:
+            return self.__state
 
     @state.setter
     def state(self, state:AudioPlayerState):
-        self.__state_lock.acquire()
-        self.__state = state
-        self.__state_lock.release()
+        with self.__state_lock:
+            self.__state = state
