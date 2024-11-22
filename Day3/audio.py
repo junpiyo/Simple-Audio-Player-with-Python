@@ -109,19 +109,17 @@ class AudioPlayer():
             stream = p.open(format=p.get_format_from_width(self.__audio.samplewidth), channels=self.__audio.nchannels, rate=self.__audio.framerate, output=True)
 
             while True:
-                with self.__state_lock:
-                    state = self.__state
-                if state != AudioPlayerState.PLAYING:
-                    break
                 data = self.__audio.read_frames(CHUNK_SIZE)
                 if len(data) == 0:
                     self.__audio.rewind()
-                    with self.__state_lock:
-                        self.__state = AudioPlayerState.READY
                     break
                 stream.write(data)
+
+                if self.state != AudioPlayerState.PLAYING:
+                    break
             
             p.terminate()
+            self.state = AudioPlayerState.READY
         except:
             print('Error: cannot play the audio')
             return
