@@ -114,9 +114,6 @@ class Audio():
         self.__current_pos = 0
 
     def read_frames(self, n:int) -> bytes: # returns at most n frames of audio
-        if n < 0:
-            return self.__frames
-
         c = self.__samplewidth * self.__nchannels
         start = round(self.__current_pos * c)
         end = start + round(n * c)
@@ -225,6 +222,7 @@ class ControllerFrame(customtkinter.CTkFrame):
                     break
                 stream.write(data)
 
+            stream.close()
             p.terminate()
         except:
             print('Error: cannot play the audio')

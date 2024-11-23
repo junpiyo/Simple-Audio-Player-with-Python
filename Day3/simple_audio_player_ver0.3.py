@@ -195,7 +195,7 @@ class ControllerFrame(customtkinter.CTkFrame):
 
         self._player.state = AudioPlayerState.PLAYING
         self.__thread_for_play = Thread(target=self._player.play, daemon=False)
-        self.__thread_for_progress_bar = Thread(target=self.__uapdate_audio_progress_bar_while_playing, daemon=False)
+        self.__thread_for_progress_bar = Thread(target=self.__update_audio_progress_bar_while_playing, daemon=False)
         self.__thread_for_play.start()
         self.__thread_for_progress_bar.start()
 
@@ -214,20 +214,20 @@ class ControllerFrame(customtkinter.CTkFrame):
         if state == AudioPlayerState.NOT_READY:
             return
         self._player.forward()
-        self.__uapdate_audio_progress_bar()
+        self.__update_audio_progress_bar()
 
     def __backward(self):
         state = self._player.state
         if state == AudioPlayerState.NOT_READY:
             return
         self._player.backward()
-        self.__uapdate_audio_progress_bar()
+        self.__update_audio_progress_bar()
 
     def __audio_progress_bar_command(self, pos):
         self._audio.current_pos = round(pos)
         self._audio_progress_label.configure(text=self.__pos_to_time(pos) + " / " + self.__pos_to_time(self._audio.nframes-1))
 
-    def __uapdate_audio_progress_bar_while_playing(self):
+    def __update_audio_progress_bar_while_playing(self):
         while True:
             current_pos = self._audio.current_pos
             self._audio_progress_bar.set(current_pos)
@@ -238,7 +238,7 @@ class ControllerFrame(customtkinter.CTkFrame):
             if state != AudioPlayerState.PLAYING:
                 break
 
-    def __uapdate_audio_progress_bar(self):
+    def __update_audio_progress_bar(self):
         current_pos = self._audio.current_pos
         self._audio_progress_bar.set(current_pos)
         self._audio_progress_label.configure(text=self.__pos_to_time(current_pos) + " / " + self.__pos_to_time(self._audio.nframes-1))

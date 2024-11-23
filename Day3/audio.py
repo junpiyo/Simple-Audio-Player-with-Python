@@ -47,9 +47,6 @@ class Audio():
         self.__lock = Lock()
 
     def read_frames(self, n:int) -> bytes: # returns at most n frames of audio
-        if n < 0:
-            return self.__frames
-
         with self.__lock:
             c = self.__samplewidth * self.__nchannels
             start = round(self.__current_pos * c)
@@ -118,6 +115,8 @@ class AudioPlayer():
                 if self.state != AudioPlayerState.PLAYING:
                     break
             
+            stream.stop_stream()
+            stream.close()
             p.terminate()
             self.state = AudioPlayerState.READY
         except:
