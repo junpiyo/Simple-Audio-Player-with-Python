@@ -67,7 +67,7 @@ class CoverArtDisplayFrame(customtkinter.CTkFrame):
             else:
                 height = self.__cover_art_height
                 width = int(w * self.__cover_art_height / h)
-                self._cover_art_display_label.configure(image=customtkinter.CTkImage(light_image=cover_art, dark_image=cover_art, size=(width, height)))
+            self._cover_art_display_label.configure(image=customtkinter.CTkImage(light_image=cover_art, dark_image=cover_art, size=(width, height)))
             self._cover_art_display_label.configure(text='')
 
     def set_audio_title(self, title:str=None):

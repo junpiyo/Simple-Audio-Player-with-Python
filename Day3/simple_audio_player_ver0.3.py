@@ -68,7 +68,7 @@ class CoverArtDisplayFrame(customtkinter.CTkFrame):
             else:
                 height = self.__cover_art_height
                 width = int(w * self.__cover_art_height / h)
-                self._cover_art_display_label.configure(image=customtkinter.CTkImage(light_image=cover_art, dark_image=cover_art, size=(width, height)))
+            self._cover_art_display_label.configure(image=customtkinter.CTkImage(light_image=cover_art, dark_image=cover_art, size=(width, height)))
             self._cover_art_display_label.configure(text='')
 
     def set_audio_title(self, title:str=None):
@@ -174,7 +174,7 @@ class ControllerFrame(customtkinter.CTkFrame):
 
         self._player.load(audio)
 
-    def close(self): # kill aliving threads
+    def close(self): # kill living threads
         self._player.state = AudioPlayerState.NOT_READY
         while True:
             self.update()
@@ -199,7 +199,7 @@ class ControllerFrame(customtkinter.CTkFrame):
         self.__thread_for_play.start()
         self.__thread_for_progress_bar.start()
 
-    def __pose(self):
+    def __pose(self): # kill living threads
         state = self._player.state
         if state == AudioPlayerState.POSED:
             return
@@ -229,9 +229,7 @@ class ControllerFrame(customtkinter.CTkFrame):
 
     def __update_audio_progress_bar_while_playing(self):
         while True:
-            current_pos = self._audio.current_pos
-            self._audio_progress_bar.set(current_pos)
-            self._audio_progress_label.configure(text=self.__pos_to_time(current_pos) + " / " + self.__pos_to_time(self._audio.nframes-1))
+            self.__update_audio_progress_bar()
             time.sleep(0.01)
             
             state = self._player.state

@@ -48,11 +48,16 @@ class Audio():
 
     def read_frames(self, n:int) -> bytes: # returns at most n frames of audio
         with self.__lock:
-            c = self.__samplewidth * self.__nchannels
-            start = round(self.__current_pos * c)
-            end = start + round(n * c)
-            self.__current_pos = self.__current_pos + n
+            start = self.__current_pos
+            end = start + n
+            if end > self.__nframes:
+                end = self.__nframes
 
+        self.__current_pos = end
+
+        c = self.__samplewidth * self.__nchannels
+        start = round(start * c)
+        end = round(end * c)
         return self.__frames[start:end]
 
     def rewind(self):
@@ -115,7 +120,6 @@ class AudioPlayer():
                 if self.state != AudioPlayerState.PLAYING:
                     break
             
-            stream.stop_stream()
             stream.close()
             p.terminate()
             self.state = AudioPlayerState.READY
