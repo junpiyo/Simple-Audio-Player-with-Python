@@ -144,7 +144,9 @@ class ControllerFrame(customtkinter.CTkFrame):
             return
         self._player.forward()
         self.__update_audio_progress_bar()
-        self.master._audio_form_frame.update_audio_form()
+
+        if not self.__thread_for_audio_form.is_alive():
+            self.master._audio_form_frame.update_audio_form()
 
     def __backward(self):
         state = self._player.state
@@ -152,12 +154,16 @@ class ControllerFrame(customtkinter.CTkFrame):
             return
         self._player.backward()
         self.__update_audio_progress_bar()
-        self.master._audio_form_frame.update_audio_form()
+
+        if not self.__thread_for_audio_form.is_alive():
+            self.master._audio_form_frame.update_audio_form()
 
     def __audio_progress_bar_command(self, pos):
         self._audio.current_pos = round(pos)
         self.__update_audio_progress_bar()
-        self.master._audio_form_frame.update_audio_form()
+
+        if not self.__thread_for_audio_form.is_alive():
+            self.master._audio_form_frame.update_audio_form()
 
     def __update_audio_progress_bar_while_playing(self):
         while True:
