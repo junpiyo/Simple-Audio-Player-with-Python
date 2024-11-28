@@ -50,14 +50,14 @@ class CoverArtDisplayFrame(customtkinter.CTkFrame):
         self._audio_album_and_artist_label.grid(row=2, column=0, padx=(10, 10), pady=(5, 10), sticky='WE')
 
     def set_cover_art(self):
-        if self._default_light_image == None and self._default_dark_image == None:
+        if self._default_light_image is None and self._default_dark_image is None:
             None
         else:
             self._cover_art_display_label.configure(image=customtkinter.CTkImage(light_image=self._default_light_image, dark_image=self._default_dark_image, size=(250, 300)))
             self._cover_art_display_label.configure(text='')
 
     def set_audio_title(self, title:str=None):
-        if title == None:
+        if title is None:
             title = 'Title'
         self._audio_title_label.configure(text=title)
 
@@ -194,7 +194,7 @@ class AudioPlayerControllerFrame(customtkinter.CTkFrame):
             dark_image = None
             print(f'Error: cannot find {dark_icon_path}')
 
-        if light_image == None and dark_image == None:
+        if light_image is None and dark_image is None:
             return
         else:
             button.configure(image=customtkinter.CTkImage(light_image=light_image, dark_image=dark_image, size=(40, 40)))
@@ -218,7 +218,7 @@ class FileDialogFrame(customtkinter.CTkFrame):
 
     def _browse(self):
         input_path = customtkinter.filedialog.askopenfilename(filetypes=[('Audio File', '*.wav')])
-        if input_path == None:
+        if input_path is None:
             return
 
         self._input_path_entry.configure(state='normal')
