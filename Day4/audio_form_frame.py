@@ -45,7 +45,7 @@ def lanczos3(input:np.ndarray, cutoff_frequency) -> np.ndarray:
 class AudioFormFrame(customtkinter.CTkFrame):
     def __init__(self, master, **kwargs):
         super().__init__(master, **kwargs)
-        self.__fig, self.__ax = plt.subplots(figsize=(4, 1), dpi=100, tight_layout=True, facecolor='#333333')
+        self.__fig, self.__ax = plt.subplots(figsize=(4, 1), dpi=100, tight_layout=True, facecolor='#2B2B2B')
         self.__ax.axis("off")
 
         self.grid_rowconfigure(0, weight=1)
@@ -63,7 +63,7 @@ class AudioFormFrame(customtkinter.CTkFrame):
 
         self.__audio_form_radius = math.ceil(AUDIO_FORM_RADIUS * audio_framerate / AUDIO_FORM_SUB_SAMPLES)
         self.__frames = np.pad(subsampled_frames, (self.__audio_form_radius, self.__audio_form_radius), 'constant')
-        self.__max_val = abs(self.__frames).max()
+        self.__frames = self.__frames / self.__frames.max()
 
         self.update_audio_form()
 
@@ -88,9 +88,9 @@ class AudioFormFrame(customtkinter.CTkFrame):
         self.__ax.cla()
         self.__ax.axis('off')
         self.__ax.set_xlim(-self.__audio_form_radius, self.__audio_form_radius)
-        self.__ax.set_ylim(-self.__max_val, self.__max_val)
-        self.__ax.vlines(0, -self.__max_val, self.__max_val, colors='#888888', linewidth=1.5)
-        self.__ax.plot(x, y, linewidth=1.5)
+        self.__ax.set_ylim(-1, 1)
+        self.__ax.vlines(0, -1, 1, colors='#888888', linewidth=1.5)
+        self.__ax.plot(x, y)
 
         self.__canvas.draw()
         # self.__canvas.flush_events()

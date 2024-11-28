@@ -66,14 +66,14 @@ class ControllerFrame(customtkinter.CTkFrame):
         self.grid_rowconfigure(2, weight=0)
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=0)
-        self.grid_columnconfigure(2, weight=0)
-        self.grid_columnconfigure(3, weight=1)
+        self.grid_columnconfigure(2, weight=1)
         self._audio_progress_bar.grid(row=0, column=0, padx=(5, 5), pady=(10, 0), sticky="WE", columnspan=4)
         self._audio_progress_label.grid(row=1, column=0, padx=(10, 10), pady=(0, 0), sticky="E", columnspan=4)
         self._audio_backward_button.grid(row=2, column=0, padx=(0, 5), pady=(10, 10), sticky="E")
         self._audio_play_button.grid(row=2, column=1, padx=(5, 5), pady=(10, 10), sticky="E")
-        self._audio_pose_button.grid(row=2, column=2, padx=(5, 5), pady=(10, 10), sticky="W")
-        self._audio_forward_button.grid(row=2, column=3, padx=(5, 0), pady=(10, 10), sticky="W")
+        self._audio_pose_button.grid(row=2, column=1, padx=(5, 5), pady=(10, 10), sticky="W")
+        self._audio_pose_button.grid_remove()
+        self._audio_forward_button.grid(row=2, column=2, padx=(5, 0), pady=(10, 10), sticky="W")
 
         self.__load_icons()
 
@@ -87,6 +87,8 @@ class ControllerFrame(customtkinter.CTkFrame):
         self._audio_pose_button.configure(state='normal')
         self._audio_backward_button.configure(state='normal')
         self._audio_forward_button.configure(state='normal')
+        self._audio_play_button.grid()
+        self._audio_pose_button.grid_remove()
 
         self._audio_progress_bar.configure(state="normal")
         self._audio_progress_bar.configure(to=self._audio.nframes-1)
@@ -120,6 +122,9 @@ class ControllerFrame(customtkinter.CTkFrame):
             return
 
         self._player.state = AudioPlayerState.PLAYING
+        self._audio_pose_button.grid()
+        self._audio_play_button.grid_remove()
+
 
         self.__thread_for_play = Thread(target=self._player.play, daemon=False)
         self.__thread_for_progress_bar = Thread(target=self.__update_audio_progress_bar_while_playing, daemon=False)
@@ -137,6 +142,8 @@ class ControllerFrame(customtkinter.CTkFrame):
         if state == AudioPlayerState.PLAYING:
             self.close()
             self._player.state = AudioPlayerState.POSED
+        self._audio_play_button.grid()
+        self._audio_pose_button.grid_remove()
 
     def __forward(self):
         state = self._player.state
