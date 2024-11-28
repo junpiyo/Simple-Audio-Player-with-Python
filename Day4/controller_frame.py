@@ -14,6 +14,7 @@ class ControllerFrame(customtkinter.CTkFrame):
         self.__thread_for_play = Thread()
         self.__thread_for_progress_bar = Thread()
         self.__thread_for_audio_form = Thread()
+        self.__thread_for_state = Thread()
 
         # Widgets
         self._audio_progress_bar = customtkinter.CTkSlider(
@@ -112,6 +113,9 @@ class ControllerFrame(customtkinter.CTkFrame):
             if self.__thread_for_audio_form.is_alive():
                 time.sleep(0.01)
                 continue
+            if self.__thread_for_state.is_alive():
+                time.sleep(0.01)
+                continue
             break
 
     def __play(self):
@@ -129,9 +133,11 @@ class ControllerFrame(customtkinter.CTkFrame):
         self.__thread_for_play = Thread(target=self._player.play, daemon=False)
         self.__thread_for_progress_bar = Thread(target=self.__update_audio_progress_bar_while_playing, daemon=False)
         self.__thread_for_audio_form = Thread(target=self.__update_audio_form_while_playing, daemon=False)
+        self.__thread_for_state = Thread(target=self.__check_state_while_playing, daemon=False)
         self.__thread_for_play.start()
         self.__thread_for_progress_bar.start()
         self.__thread_for_audio_form.start()
+        self.__thread_for_state.start()
 
     def __pose(self): # kill living threads
         state = self._player.state
@@ -199,6 +205,16 @@ class ControllerFrame(customtkinter.CTkFrame):
                 break
 
         self.master._audio_form_frame.update_audio_form()
+
+    def __check_state_while_playing(self):
+        while True:
+            time.sleep(0.01)
+            
+            state = self._player.state
+            if state != AudioPlayerState.PLAYING:
+                self._audio_play_button.grid()
+                self._audio_pose_button.grid_remove()
+                break
 
     def __pos_to_time(self, pos):
         t = pos / self._audio.framerate
