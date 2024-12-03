@@ -1,9 +1,11 @@
 import customtkinter
+import tkinter
 import PIL.Image
-from threading import Thread
+from threading import Thread, Event
 import time
 from audio import Audio, AudioPlayer, AudioPlayerState
 from common import *
+import logging
 
 
 class ControllerFrame(customtkinter.CTkFrame):
@@ -11,19 +13,21 @@ class ControllerFrame(customtkinter.CTkFrame):
         super().__init__(master, **kwargs)
 
         self._player = AudioPlayer()
+
+        # threads
         self.__thread_for_play = Thread()
         self.__thread_for_progress_bar = Thread()
         self.__thread_for_audio_form = Thread()
-        self.__thread_for_state = Thread()
+        self.__thread_for_button = Thread()
+        self.__event_for_play = Event()
 
-        # Widgets
-        self._audio_progress_bar = customtkinter.CTkSlider(
-            self,
-            height=20, corner_radius=6,
-            from_=0, to=100, number_of_steps=99,
-            variable=customtkinter.DoubleVar(value=0), 
-            state="disabled",
-            command=self.__audio_progress_bar_command
+        # widgets
+        self._audio_progress_bar = customtkinter.CTkProgressBar(
+            master=self,
+            width=None, height=12, corner_radius=6, border_width=0,
+            bg_color='transparent', fg_color=None,
+            border_color=None, progress_color=None,
+            variable = customtkinter.DoubleVar(value=0.0)
         )
         self._audio_progress_label = customtkinter.CTkLabel(self,
             height=20, width=40,
@@ -69,7 +73,7 @@ class ControllerFrame(customtkinter.CTkFrame):
         self.grid_columnconfigure(1, weight=0)
         self.grid_columnconfigure(2, weight=1)
         self._audio_progress_bar.grid(row=0, column=0, padx=(5, 5), pady=(10, 0), sticky="WE", columnspan=4)
-        self._audio_progress_label.grid(row=1, column=0, padx=(10, 10), pady=(0, 0), sticky="E", columnspan=4)
+        self._audio_progress_label.grid(row=1, column=0, padx=(10, 10), pady=(5, 0), sticky="E", columnspan=4)
         self._audio_backward_button.grid(row=2, column=0, padx=(0, 5), pady=(10, 10), sticky="E")
         self._audio_play_button.grid(row=2, column=1, padx=(5, 5), pady=(10, 10), sticky="E")
         self._audio_pose_button.grid(row=2, column=1, padx=(5, 5), pady=(10, 10), sticky="W")
@@ -78,8 +82,12 @@ class ControllerFrame(customtkinter.CTkFrame):
 
         self.__load_icons()
 
+        # bind
+        self._audio_progress_bar.bind("<Button>", self.__press_progress_bar)
+        self._audio_progress_bar.bind("<B1-Motion>", self.__drag_progress_bar)
+        self._audio_progress_bar.bind("<ButtonRelease>", self.__release_progress_bar)
+
     def load(self, audio:Audio):
-        # first kill aliving threads
         self.close()
 
         # init widgets
@@ -91,30 +99,35 @@ class ControllerFrame(customtkinter.CTkFrame):
         self._audio_play_button.grid()
         self._audio_pose_button.grid_remove()
 
-        self._audio_progress_bar.configure(state="normal")
-        self._audio_progress_bar.configure(to=self._audio.nframes-1)
-        self._audio_progress_bar.configure(from_=0)
-        self._audio_progress_bar.configure(number_of_steps=self._audio.nframes-1)
-        self._audio_progress_bar.set(0)
+        self._audio_progress_bar.set(0.0)
         self._audio_progress_label.configure(text=self.__pos_to_time(0) + " / " + self.__pos_to_time(self._audio.nframes-1))
 
-        self._player.load(audio)
+        # load audio
+        self._player.load(audio, self.__event_for_play)
+
+        # clear all events not to run threads
+        self.__event_for_play.clear()
+
+        if not self.__thread_for_button.is_alive():
+            self.__thread_for_button = Thread(target=self.__update_button, daemon=False)
+            self.__thread_for_button.start()
 
     def close(self): # kill living threads
-        self._player.state = AudioPlayerState.NOT_READY
+        self._player.close()
+
         while True:
-            self.update()
+            self.__event_for_play.set()
             if self.__thread_for_play.is_alive():
-                time.sleep(0.01)
+                self.update()
                 continue
             if self.__thread_for_progress_bar.is_alive():
-                time.sleep(0.01)
+                self.update()
                 continue
             if self.__thread_for_audio_form.is_alive():
-                time.sleep(0.01)
+                self.update()
                 continue
-            if self.__thread_for_state.is_alive():
-                time.sleep(0.01)
+            if self.__thread_for_button.is_alive():
+                self.update()
                 continue
             break
 
@@ -125,96 +138,146 @@ class ControllerFrame(customtkinter.CTkFrame):
         if state == AudioPlayerState.NOT_READY:
             return
 
-        self._player.state = AudioPlayerState.PLAYING
-        self._audio_pose_button.grid()
-        self._audio_play_button.grid_remove()
+        # if threads are not alive, generate new threads and start
+        if not self.__thread_for_play.is_alive():
+            self.__thread_for_play = Thread(target=self._player.play, daemon=False)
+            self.__thread_for_play.start()
+        
+        if not self.__thread_for_progress_bar.is_alive():
+            self.__thread_for_progress_bar = Thread(target=self.__update_audio_progress_bar_while_playing, daemon=False)
+            self.__thread_for_progress_bar.start()
 
+        if not self.__thread_for_audio_form.is_alive():
+            self.__thread_for_audio_form = Thread(target=self.__update_audio_form_while_playing, daemon=False)
+            self.__thread_for_audio_form.start()
 
-        self.__thread_for_play = Thread(target=self._player.play, daemon=False)
-        self.__thread_for_progress_bar = Thread(target=self.__update_audio_progress_bar_while_playing, daemon=False)
-        self.__thread_for_audio_form = Thread(target=self.__update_audio_form_while_playing, daemon=False)
-        self.__thread_for_state = Thread(target=self.__check_state_while_playing, daemon=False)
-        self.__thread_for_play.start()
-        self.__thread_for_progress_bar.start()
-        self.__thread_for_audio_form.start()
-        self.__thread_for_state.start()
+        self.__event_for_play.set() # to run threads
 
     def __pose(self): # kill living threads
         state = self._player.state
-        if state == AudioPlayerState.POSED:
+        if state != AudioPlayerState.PLAYING:
             return
-        if state == AudioPlayerState.NOT_READY:
-            return
-        if state == AudioPlayerState.PLAYING:
-            self.close()
-            self._player.state = AudioPlayerState.POSED
-        self._audio_play_button.grid()
-        self._audio_pose_button.grid_remove()
+        
+        self.__event_for_play.clear() # not to run threads
 
     def __forward(self):
         state = self._player.state
         if state == AudioPlayerState.NOT_READY:
             return
+        
         self._player.forward()
-        self.__update_audio_progress_bar()
 
-        if not self.__thread_for_audio_form.is_alive():
+        if not self.__event_for_play.is_set():
+            self.__update_audio_progress_bar()
+        if not self.__event_for_play.is_set():
             self.master._audio_form_frame.update_audio_form()
 
     def __backward(self):
         state = self._player.state
         if state == AudioPlayerState.NOT_READY:
             return
+        
         self._player.backward()
-        self.__update_audio_progress_bar()
 
-        if not self.__thread_for_audio_form.is_alive():
+        if not self.__event_for_play.is_set():
+            self.__update_audio_progress_bar()
+        if not self.__event_for_play.is_set():
             self.master._audio_form_frame.update_audio_form()
 
-    def __audio_progress_bar_command(self, pos):
-        self._audio.current_pos = round(pos)
-        self.__update_audio_progress_bar()
+    def __press_progress_bar(self, event:tkinter.Event):
+        # pause if playing
+        print(event)
+        state = self._player.state
+        if state == AudioPlayerState.NOT_READY:
+            return
+        if state == AudioPlayerState.PLAYING:
+            self.__event_for_play.clear()
+            self._player.state = AudioPlayerState.TEMPORARY_POSED
 
-        if not self.__thread_for_audio_form.is_alive():
-            self.master._audio_form_frame.update_audio_form()
+        scaling_factor = self._audio_progress_bar._get_widget_scaling()
+        border_witdh = self._audio_progress_bar.cget('border_width') * scaling_factor
+        x = event.x -  border_witdh
+        val = x / (self._audio_progress_bar.winfo_width() - border_witdh - border_witdh)
+        val = 0 if val < 0 else val
+        val = 1 if val > 1 else val
+        pos = round(self._audio.nframes * val)
+
+        self._audio.current_pos = pos
+        self._audio_progress_bar.set(val)
+        self._audio_progress_label.configure(text=self.__pos_to_time(pos) + " / " + self.__pos_to_time(self._audio.nframes-1))
+        self.master._audio_form_frame.update_audio_form()
+
+    def __drag_progress_bar(self, event:tkinter.Event):
+        print(event)
+        state = self._player.state
+        if state == AudioPlayerState.NOT_READY:
+            return
+        scaling_factor = self._audio_progress_bar._get_widget_scaling()
+        border_witdh = self._audio_progress_bar.cget('border_width') * scaling_factor
+        x = event.x -  border_witdh
+        val = x / (self._audio_progress_bar.winfo_width() - border_witdh - border_witdh)
+        val = 0 if val < 0 else val
+        val = 1 if val > 1 else val
+        pos = round(self._audio.nframes * val)
+
+        self._audio.current_pos = pos
+        self._audio_progress_bar.set(val)
+        self._audio_progress_label.configure(text=self.__pos_to_time(pos) + " / " + self.__pos_to_time(self._audio.nframes-1))
+        self.master._audio_form_frame.update_audio_form()
+
+    def __release_progress_bar(self, event:tkinter.Event):
+        print(event)
+        state = self._player.state
+        if state == AudioPlayerState.NOT_READY:
+            return
+        if state == AudioPlayerState.TEMPORARY_POSED:
+            self.__event_for_play.set()
+            self._player.state = AudioPlayerState.PLAYING
 
     def __update_audio_progress_bar_while_playing(self):
         while True:
-            self.__update_audio_progress_bar()
-            time.sleep(0.01)
-            
             state = self._player.state
-            if state != AudioPlayerState.PLAYING:
+            if state == AudioPlayerState.NOT_READY:
                 break
+            if state == AudioPlayerState.PLAYING:
+                self.__event_for_play.wait()
+                self.__update_audio_progress_bar()
 
-        self.__update_audio_progress_bar()
+            time.sleep(0.1)
 
     def __update_audio_progress_bar(self):
         current_pos = self._audio.current_pos
-        self._audio_progress_bar.set(current_pos)
+        val = current_pos / self._audio.nframes
+        self._audio_progress_bar.set(val)
+        print(current_pos, val, self._audio.nframes)
         self._audio_progress_label.configure(text=self.__pos_to_time(current_pos) + " / " + self.__pos_to_time(self._audio.nframes-1))
-        # print(current_pos, self._audio.nframes)
+        self.update_idletasks()
 
     def __update_audio_form_while_playing(self):
         while True:
-            self.master._audio_form_frame.update_audio_form()
-            time.sleep(0.1)
-            
             state = self._player.state
-            if state != AudioPlayerState.PLAYING:
+            if state == AudioPlayerState.NOT_READY:
+                break
+            if state == AudioPlayerState.PLAYING:
+                self.__event_for_play.wait()
+                self.master._audio_form_frame.update_audio_form()
+
+            time.sleep(0.1)
+
+    def __update_button(self):
+        while True:
+            state = self._player.state
+            if state == AudioPlayerState.NOT_READY:
                 break
 
-        self.master._audio_form_frame.update_audio_form()
-
-    def __check_state_while_playing(self):
-        while True:
-            time.sleep(0.1)
-            
-            state = self._player.state
-            if state != AudioPlayerState.PLAYING:
+            if state == AudioPlayerState.PLAYING or state == AudioPlayerState.TEMPORARY_POSED:
+                self._audio_pose_button.grid()
+                self._audio_play_button.grid_remove()
+            else:
                 self._audio_play_button.grid()
                 self._audio_pose_button.grid_remove()
-                break
+
+            time.sleep(0.1)
 
     def __pos_to_time(self, pos):
         t = pos / self._audio.framerate

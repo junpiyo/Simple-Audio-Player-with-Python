@@ -213,7 +213,9 @@ class ControllerFrame(customtkinter.CTkFrame):
     def __play(self):
         try:
             p = pyaudio.PyAudio()
-            stream = p.open(format=p.get_format_from_width(self._audio.samplewidth), channels=self._audio.nchannels, rate=self._audio.framerate, output=True)
+            stream = p.open(format=p.get_format_from_width(self._audio.samplewidth),
+                            channels=self._audio.nchannels, rate=self._audio.framerate,
+                            frames_per_buffer=CHUNK_SIZE, output=True)
             self._audio.rewind()
             while True:
                 data = self._audio.read_frames(CHUNK_SIZE)

@@ -110,12 +110,15 @@ class AudioPlayer():
     def play(self):
         try:
             p = pyaudio.PyAudio()
-            stream = p.open(format=p.get_format_from_width(self.__audio.samplewidth), channels=self.__audio.nchannels, rate=self.__audio.framerate, output=True)
+            stream = p.open(format=p.get_format_from_width(self.__audio.samplewidth),
+                            channels=self.__audio.nchannels, rate=self.__audio.framerate,
+                            frames_per_buffer=CHUNK_SIZE, output=True)
 
             while True:
                 data = self.__audio.read_frames(CHUNK_SIZE)
                 if len(data) == 0:
                     self.__audio.rewind()
+                    self.state = AudioPlayerState.READY
                     break
                 stream.write(data)
 
@@ -124,7 +127,6 @@ class AudioPlayer():
             
             stream.close()
             p.terminate()
-            self.state = AudioPlayerState.READY
         except:
             print('Error: cannot play the audio')
             return
