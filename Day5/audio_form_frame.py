@@ -65,7 +65,7 @@ class AudioFormFrame(customtkinter.CTkFrame):
         self.__frames = np.pad(subsampled_frames, (self.__audio_form_radius, self.__audio_form_radius), 'constant')
         self.__frames = self.__frames / self.__frames.max()
 
-        self.update_audio_form()
+        self.update_audio_form(0)
 
     def __read_frames(self, pos):
         if pos >= self.__audio.nframes:
@@ -77,8 +77,7 @@ class AudioFormFrame(customtkinter.CTkFrame):
 
         return self.__frames[start:end]
 
-    def update_audio_form(self):
-        current_pos = self.__audio.current_pos
+    def update_audio_form(self, current_pos):
         y = self.__read_frames(current_pos)
         if y is None:
             return

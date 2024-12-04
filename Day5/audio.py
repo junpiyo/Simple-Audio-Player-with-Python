@@ -3,6 +3,7 @@ from enum import IntEnum, auto
 import pyaudio
 from threading import Lock, Event
 from common import *
+import time
 
 
 class AudioPlayerState(IntEnum):
@@ -11,6 +12,7 @@ class AudioPlayerState(IntEnum):
     TEMPORARY_POSED = auto()
     READY = auto()
     NOT_READY = auto()
+    CLOSING = auto()
 
 class AudioTag():
     def __init__(self, cover_art:PIL.Image=None, album:str=None, artist:str=None, title:str=None):
@@ -48,8 +50,9 @@ class Audio():
         with self.__lock:
             start = self.__next_pos
             end = start + n
-            if end > self.__nframes:
-                end = self.__nframes
+            # if end > self.__nframes:
+            #     end = self.__nframes
+            #     print(start, end)
                 
             self.__current_pos = start
             self.__next_pos = end
@@ -91,7 +94,7 @@ class Audio():
     def current_pos(self, pos:int): # seeks to the specified position
         with self.__lock:
             if pos >= self.__nframes:
-                self.__current_pos = 0
+                self.__current_pos = self.__nframes
             elif pos < 0:
                 self.__current_pos = 0
             else:
@@ -101,37 +104,44 @@ class Audio():
 
 
 class AudioPlayer():
-    def __init__(self):
+    def __init__(self, event_for_play: Event):
+        self.__event_for_play = event_for_play
         self.__state_lock = Lock()
         self.__state = AudioPlayerState.NOT_READY
+        logging.info(f'state: {AudioPlayerState(self.__state).name}, event_for_play: {self.__event_for_play.is_set()}')
 
-    def load(self, audio:Audio, event_for_play: Event):
+    def load(self, audio:Audio):
         self.__audio = audio
-        self.__event_for_play = event_for_play
         self.__state = AudioPlayerState.READY
-
-    def close(self):
-        self.__state = AudioPlayerState.NOT_READY
+        logging.info(f'state: {AudioPlayerState(self.__state).name}, event_for_play: {self.__event_for_play.is_set()}')
 
     def play(self):
-        if self.state != AudioPlayerState.NOT_READY:
+        if self.state == AudioPlayerState.READY or self.state == AudioPlayerState.POSED or self.state == AudioPlayerState.TEMPORARY_POSED:
             self.state = AudioPlayerState.PLAYING
+            logging.info(f'state: {AudioPlayerState(self.__state).name}, event_for_play: {self.__event_for_play.is_set()}')
+        else:
+            return
         
         try:
             p = pyaudio.PyAudio()
             stream = p.open(format=p.get_format_from_width(self.__audio.samplewidth),
                             channels=self.__audio.nchannels, rate=self.__audio.framerate,
-                            frames_per_buffer=CHUNK_SIZE*4, output=True)
+                            frames_per_buffer=CHUNK_SIZE, output=True)
 
             while True:
-                if self.state == AudioPlayerState.NOT_READY:
+                if self.state == AudioPlayerState.CLOSING or self.state == AudioPlayerState.NOT_READY:
                     break
                 if not self.__event_for_play.is_set():
                     if self.state != AudioPlayerState.TEMPORARY_POSED:
                         self.state = AudioPlayerState.POSED
+                    logging.info(f'state: {AudioPlayerState(self.__state).name}, event_for_play: {self.__event_for_play.is_set()}')
                     self.__event_for_play.wait()
-                    if self.state != AudioPlayerState.NOT_READY:
-                        self.state = AudioPlayerState.PLAYING
+
+                    if self.state == AudioPlayerState.CLOSING or self.state == AudioPlayerState.NOT_READY:
+                        break
+
+                    self.state = AudioPlayerState.PLAYING
+                    logging.info(f'state: {AudioPlayerState(self.__state).name}, event_for_play: {self.__event_for_play.is_set()}')
 
                 if self.state == AudioPlayerState.PLAYING:
                     data = self.__audio.read_frames(CHUNK_SIZE)
@@ -143,8 +153,12 @@ class AudioPlayer():
             stream.close()
             p.terminate()
 
-            if self.state != AudioPlayerState.NOT_READY:
+            if self.state == AudioPlayerState.CLOSING or self.state == AudioPlayerState.NOT_READY:
+                return
+            else:
                 self.state = AudioPlayerState.READY
+                self.__event_for_play.clear()
+                logging.info(f'state: {AudioPlayerState(self.__state).name}, event_for_play: {self.__event_for_play.is_set()}')
 
         except:
             print('Error: cannot play the audio')
