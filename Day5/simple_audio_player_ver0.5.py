@@ -30,9 +30,12 @@ class SimpleAudioPlayer(customtkinter.CTk):
         self._controller_frame.grid(row=2, column=0, padx=(10, 10), pady=(10, 0), sticky="WE")
         self._file_dialog_frame.grid(row=3, column=0, padx=(10, 10), pady=(10, 10), sticky="WE")
 
+        # attributes
+        # self.wm_attributes('-alpha', 0.9)
+
         # protocol
         self.protocol('WM_DELETE_WINDOW', self.close)
-
+                
     def load(self, audio: Audio, tags: AudioTag):
         self._cover_art_display_frame.load(tags)
         self._audio_form_frame.load(audio)

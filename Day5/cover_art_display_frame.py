@@ -28,16 +28,16 @@ class CoverArtDisplayFrame(customtkinter.CTkFrame):
         # wights
         self._cover_art_display_label = customtkinter.CTkLabel(
             self,
-            width=self.__cover_art_width, height=self.__cover_art_height, corner_radius=6,
+            width=self.__cover_art_width + 20, height=self.__cover_art_height + 20, corner_radius=6,
             font=(FONT_TYPE, FONT_SIZE, 'normal'), text='The cover art of a audio is to be displayed...'
         )
-        self._audio_title_label = customtkinter.CTkLabel(self, font=(FONT_TYPE, FONT_SIZE+4, 'bold'), text='Title', anchor='center')
-        self._audio_album_and_artist_label = customtkinter.CTkLabel(self, font=(FONT_TYPE, FONT_SIZE-2, 'normal'), text='Album/Artist', anchor='center')
+        self._audio_title_label = customtkinter.CTkLabel(self, font=(FONT_TYPE, FONT_SIZE+6, 'bold'), text='Title', anchor='center')
+        self._audio_album_and_artist_label = customtkinter.CTkLabel(self, font=(FONT_TYPE, FONT_SIZE-2, 'bold'), text='Album / Artist', anchor='center')
         self.grid_rowconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=0)
         self.grid_rowconfigure(2, weight=0)
         self.grid_columnconfigure(0, weight=1)
-        self._cover_art_display_label.grid(row=0, column=0, padx=(10, 10), pady=(5, 10), sticky="NWE", columnspan=2)
+        self._cover_art_display_label.grid(row=0, column=0, padx=(10, 10), pady=(5, 10), sticky="NSWE", columnspan=2)
         self._audio_title_label.grid(row=1, column=0, padx=(10, 10), pady=(5, 0), sticky="WE", columnspan=2)
         self._audio_album_and_artist_label.grid(row=2, column=0, padx=(10, 10), pady=(5, 10), sticky="WE")
 
@@ -74,4 +74,4 @@ class CoverArtDisplayFrame(customtkinter.CTkFrame):
             album = 'Album'
         if artist is None:
             artist = 'Artist'
-        self._audio_album_and_artist_label.configure(text=f'{album}/{artist}')
+        self._audio_album_and_artist_label.configure(text=f'{album}  / {artist}')

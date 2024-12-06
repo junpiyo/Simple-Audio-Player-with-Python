@@ -3,9 +3,8 @@ import math
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
-from audio import Audio, AudioPlayerState
+from audio import Audio
 from common import *
-import time
 
 
 AUDIO_FORM_RADIUS = 0.5 # sec
@@ -48,7 +47,7 @@ class AudioFormFrame(customtkinter.CTkFrame):
         self.__fig, self.__ax = plt.subplots(figsize=(4, 1), dpi=100, tight_layout=True, facecolor='#2B2B2B')
         self.__ax.axis("off")
 
-        self.grid_rowconfigure(0, weight=1)
+        self.grid_rowconfigure(0, weight=0)
         self.grid_columnconfigure(0, weight=1)
         self.__canvas = FigureCanvasTkAgg(self.__fig, master=self)
         self.__canvas.get_tk_widget().grid(row=0, column=0, padx=(5, 5), pady=(5, 5), sticky='WE')

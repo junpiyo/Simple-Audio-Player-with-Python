@@ -2,17 +2,19 @@ import PIL.Image
 from enum import IntEnum, auto
 import pyaudio
 from threading import Lock, Event
-from common import *
+import numpy as np
 import time
+from common import *
+
 
 
 class AudioPlayerState(IntEnum):
     PLAYING = auto()
     POSED = auto()
-    TEMPORARY_POSED = auto()
     READY = auto()
     NOT_READY = auto()
     CLOSING = auto()
+
 
 class AudioTag():
     def __init__(self, cover_art:PIL.Image=None, album:str=None, artist:str=None, title:str=None):
@@ -50,9 +52,8 @@ class Audio():
         with self.__lock:
             start = self.__next_pos
             end = start + n
-            # if end > self.__nframes:
-            #     end = self.__nframes
-            #     print(start, end)
+            if end > self.__nframes:
+                end = self.__nframes
                 
             self.__current_pos = start
             self.__next_pos = end
@@ -104,24 +105,46 @@ class Audio():
 
 
 class AudioPlayer():
-    def __init__(self, event_for_play: Event):
+    def __init__(self, event_for_play: Event, volume=100, loop_play=True):
+        self.__volume = volume
+        self.__loop_play = loop_play
         self.__event_for_play = event_for_play
         self.__state_lock = Lock()
+        self.__volume_lock = Lock()
+        self.__loop_play_lock = Lock()
         self.__state = AudioPlayerState.NOT_READY
         logging.info(f'state: {AudioPlayerState(self.__state).name}, event_for_play: {self.__event_for_play.is_set()}')
 
     def load(self, audio:Audio):
         self.__audio = audio
-        self.__state = AudioPlayerState.READY
+        self.state = AudioPlayerState.READY
         logging.info(f'state: {AudioPlayerState(self.__state).name}, event_for_play: {self.__event_for_play.is_set()}')
 
-    def play(self):
-        if self.state == AudioPlayerState.READY or self.state == AudioPlayerState.POSED or self.state == AudioPlayerState.TEMPORARY_POSED:
+    def close(self):
+        self.state = AudioPlayerState.CLOSING
+        logging.info(f'state: {AudioPlayerState(self.__state).name}, event_for_play: {self.__event_for_play.is_set()}')
+
+    def loop_for_playback(self):
+        if self.state == AudioPlayerState.READY or self.state == AudioPlayerState.POSED:
             self.state = AudioPlayerState.PLAYING
             logging.info(f'state: {AudioPlayerState(self.__state).name}, event_for_play: {self.__event_for_play.is_set()}')
         else:
             return
         
+        while True:
+            self.play()
+            if self.state == AudioPlayerState.CLOSING or self.state == AudioPlayerState.NOT_READY:
+                return
+            
+            if self.__loop_play:
+                continue
+            else:
+                time.sleep(1.0)
+                self.state = AudioPlayerState.READY
+                self.__event_for_play.clear()
+                logging.info(f'state: {AudioPlayerState(self.__state).name}, event_for_play: {self.__event_for_play.is_set()}')
+
+    def play(self):        
         try:
             p = pyaudio.PyAudio()
             stream = p.open(format=p.get_format_from_width(self.__audio.samplewidth),
@@ -132,8 +155,7 @@ class AudioPlayer():
                 if self.state == AudioPlayerState.CLOSING or self.state == AudioPlayerState.NOT_READY:
                     break
                 if not self.__event_for_play.is_set():
-                    if self.state != AudioPlayerState.TEMPORARY_POSED:
-                        self.state = AudioPlayerState.POSED
+                    self.state = AudioPlayerState.POSED
                     logging.info(f'state: {AudioPlayerState(self.__state).name}, event_for_play: {self.__event_for_play.is_set()}')
                     self.__event_for_play.wait()
 
@@ -148,18 +170,10 @@ class AudioPlayer():
                     if len(data) == 0:
                         self.__audio.rewind()
                         break
-                    stream.write(data)
+                    stream.write(self.__controll_volume(data))
             
             stream.close()
             p.terminate()
-
-            if self.state == AudioPlayerState.CLOSING or self.state == AudioPlayerState.NOT_READY:
-                return
-            else:
-                self.state = AudioPlayerState.READY
-                self.__event_for_play.clear()
-                logging.info(f'state: {AudioPlayerState(self.__state).name}, event_for_play: {self.__event_for_play.is_set()}')
-
         except:
             print('Error: cannot play the audio')
             return
@@ -174,6 +188,23 @@ class AudioPlayer():
         next_pos = self.__audio.current_pos - offset
         self.__audio.current_pos = next_pos
 
+    def __controll_volume(self, data:bytes):
+        if data == []:
+            return data
+        
+        volume = self.volume
+        if volume == 100:
+            return data
+    
+        volume =  0 if volume == 0 else 10 ** (volume / 50)
+        nchannels = self.__audio.nchannels
+        volume = self.volume
+        channels = [np.frombuffer(data, dtype=np.int16)[i::nchannels] for i in range(nchannels)]
+        channels = [channel.astype(dtype=np.float32) * volume / 100 for channel in channels]
+        channels = [channel.astype(dtype=np.int16) for channel in channels]
+        
+        return np.column_stack(channels).tobytes()
+
     @property
     def state(self):
         with self.__state_lock:
@@ -183,3 +214,25 @@ class AudioPlayer():
     def state(self, state:AudioPlayerState):
         with self.__state_lock:
             self.__state = state
+
+    @property
+    def volume(self):
+        with self.__volume_lock:
+            return self.__volume
+
+    @volume.setter
+    def volume(self, volume:int):
+        volume = 0 if volume < 0 else volume
+        volume = volume if volume < 100 else 100
+        with self.__volume_lock:
+            self.__volume = volume
+
+    @property
+    def loop_play(self):
+        with self.__loop_play_lock:
+            return self.__loop_play
+
+    @loop_play.setter
+    def loop_play(self, loop_play:bool):
+        with self.__loop_play_lock:
+            self.__loop_play = loop_play
