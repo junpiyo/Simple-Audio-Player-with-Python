@@ -1,9 +1,9 @@
 import customtkinter
 import tkinter
 import PIL.Image
-from threading import Thread, Event
+from threading import Thread, Lock
 import time
-from audio import Audio, AudioPlayer, AudioPlayerState
+from audio import Audio, AudioPlayer, AudioPlayerState, AudioPlayerInstruction
 from common import *
 import logging
 
@@ -17,7 +17,6 @@ class ControllerFrame(customtkinter.CTkFrame):
         self.__thread_for_progress_bar = Thread()
         self.__thread_for_audio_form = Thread()
         self.__thread_for_button = Thread()
-        self.__event_for_play = Event()
 
         # widgets
         self._audio_progress_bar = customtkinter.CTkProgressBar(
@@ -96,6 +95,22 @@ class ControllerFrame(customtkinter.CTkFrame):
             command=self.__volume
         )
         self._volume_controller_frame = VolumeControlloerFrame(self)
+        # self._clip_A_button = customtkinter.CTkButton(
+        #     self,
+        #     image=None, hover=True,
+        #     text="A", font=(FONT_TYPE, FONT_SIZE, 'normal'),
+        #     height=30, width=30, corner_radius=4,
+        #     state="disabled",
+        #     command=self.__clip_A
+        # )
+        # self._clip_B_button = customtkinter.CTkButton(
+        #     self,
+        #     image=None, hover=True,
+        #     text="B", font=(FONT_TYPE, FONT_SIZE, 'normal'),
+        #     height=30, width=30, corner_radius=4,
+        #     state="disabled",
+        #     command=self.__clip_B
+        # )
 
         self.grid_rowconfigure(0, weight=0)
         self.grid_rowconfigure(1, weight=0)
@@ -106,19 +121,21 @@ class ControllerFrame(customtkinter.CTkFrame):
         self.grid_columnconfigure(3, weight=1)
         self.grid_columnconfigure(4, weight=0)
 
-        self._audio_progress_bar.grid(row=0, column=0, padx=(10, 10), pady=(10, 0), sticky="WE", columnspan=5)
-        self._audio_progress_label.grid(row=1, column=0, padx=(10, 10), pady=(5, 0), sticky="E", columnspan=5)
+        self._audio_progress_bar.grid(row=0, column=0, padx=(10, 10), pady=(10, 0), sticky="WE", columnspan=7)
+        self._audio_progress_label.grid(row=1, column=0, padx=(10, 10), pady=(5, 0), sticky="E", columnspan=7)
 
-        self._loop_button.grid(row=2, column=0, padx=(20, 0), pady=(10, 10), sticky="W")
-        self._loop_off_button.grid(row=2, column=0, padx=(20, 0), pady=(10, 10), sticky="W")
+        # self._clip_A_button.grid(row=2, column=0, padx=(25, 0), pady=(10, 10), sticky="E")
+        # self._clip_B_button.grid(row=2, column=1, padx=(5, 0), pady=(10, 10), sticky="E")
+        self._loop_button.grid(row=2, column=0, padx=(25, 0), pady=(10, 10), sticky="W")
+        self._loop_off_button.grid(row=2, column=0, padx=(25, 0), pady=(10, 10), sticky="W")
         self._loop_off_button.grid_remove()
         self._audio_backward_button.grid(row=2, column=1, padx=(5, 0), pady=(10, 10), sticky="E")
         self._audio_play_button.grid(row=2, column=2, padx=(5, 0), pady=(10, 10), sticky="E")
         self._audio_pose_button.grid(row=2, column=2, padx=(5, 0), pady=(10, 10), sticky="W")
         self._audio_pose_button.grid_remove()
         self._audio_forward_button.grid(row=2, column=3, padx=(5, 0), pady=(10, 10), sticky="W")
-        self._volume_button.grid(row=2, column=4, padx=(5, 20), pady=(10, 10), sticky="W")
-        self._volume_off_button.grid(row=2, column=4, padx=(5, 20), pady=(10, 10), sticky="W")
+        self._volume_button.grid(row=2, column=4, padx=(0, 25), pady=(10, 10), sticky="W")
+        self._volume_off_button.grid(row=2, column=4, padx=(0, 25), pady=(10, 10), sticky="W")
         self._volume_off_button.grid_remove()
 
         self.__load_icons()
@@ -128,18 +145,17 @@ class ControllerFrame(customtkinter.CTkFrame):
         self._audio_progress_bar.bind("<B1-Motion>", self.__drag_progress_bar)
         self._audio_progress_bar.bind("<ButtonRelease>", self.__release_progress_bar)
 
-        self._player = AudioPlayer(self.__event_for_play)
+        self._player = AudioPlayer()
 
     def load(self, audio:Audio):
-        self.__event_for_play.clear()
-        logging.info(f'state: {AudioPlayerState(self._player.state).name}, event_for_play: {self.__event_for_play.is_set()}')
+        # load audio
+        self._player.instruction = AudioPlayerInstruction.STOP
+        self._player.load(audio)
+        logging.info(f'instruction: {self._player.instruction.name}, state: {self._player.state.name}')
         logging.info(f'__thread_for_play: {'alive' if self.__thread_for_play.is_alive() else 'dead'}')
         logging.info(f'__thread_for_progress_bar: {'alive' if self.__thread_for_progress_bar.is_alive() else 'dead'}')
         logging.info(f'__thread_for_audio_form: {'alive' if self.__thread_for_audio_form.is_alive() else 'dead'}')
         logging.info(f'__thread_for_button: {'alive' if self.__thread_for_button.is_alive() else 'dead'}')
-
-        # load audio
-        self._player.load(audio)
 
         # init widgets
         self._audio = audio
@@ -151,6 +167,8 @@ class ControllerFrame(customtkinter.CTkFrame):
         self._loop_off_button.configure(state='normal')
         self._volume_button.configure(state='normal')
         self._volume_off_button.configure(state='normal')
+        # self._clip_A_button.configure(state='normal')
+        # self._clip_B_button.configure(state='normal')
 
         self._audio_play_button.grid()
         self._audio_pose_button.grid_remove()
@@ -158,26 +176,22 @@ class ControllerFrame(customtkinter.CTkFrame):
         self._audio_progress_bar.set(0.0)
         self._audio_progress_label.configure(text=self.__pos_to_time(0) + " / " + self.__pos_to_time(self._audio.nframes-1))
 
-        # clear all events not to run threads
-        logging.info(f'state: {AudioPlayerState(self._player.state).name}, event_for_play: {self.__event_for_play.is_set()}')
-
         if not self.__thread_for_progress_bar.is_alive():
-            self.__thread_for_progress_bar = Thread(target=self.__loop_for_updating_audio_progress_bar, daemon=False)
+            self.__thread_for_progress_bar = Thread(target=self.__update_audio_progress_bar_when_playing, daemon=False)
             self.__thread_for_progress_bar.start()
         if not self.__thread_for_audio_form.is_alive():
-            self.__thread_for_audio_form = Thread(target=self.__loop_for_updating_audio_form, daemon=False)
+            self.__thread_for_audio_form = Thread(target=self.__update_audio_form_when_playing, daemon=False)
             self.__thread_for_audio_form.start()
         if not self.__thread_for_button.is_alive():
-            self.__thread_for_button = Thread(target=self.__loop_for_updating_buttons, daemon=False)
+            self.__thread_for_button = Thread(target=self.__update_buttons_when_playing, daemon=False)
             self.__thread_for_button.start()
 
-    def close(self): # kill all living threads
+    def close(self):
         logging.info(f'close button was pressed')
         self._player.close()
         
         while True:
-            self.__event_for_play.set()
-            logging.info(f'state: {AudioPlayerState(self._player.state).name}, event_for_play: {self.__event_for_play.is_set()}')
+            logging.info(f'instruction: {self._player.instruction.name}, state: {self._player.state.name}')
             logging.info(f'__thread_for_play: {'alive' if self.__thread_for_play.is_alive() else 'dead'}')
             logging.info(f'__thread_for_progress_bar: {'alive' if self.__thread_for_progress_bar.is_alive() else 'dead'}')
             logging.info(f'__thread_for_audio_form: {'alive' if self.__thread_for_audio_form.is_alive() else 'dead'}')
@@ -200,17 +214,22 @@ class ControllerFrame(customtkinter.CTkFrame):
                 continue
             break
 
-        self.__event_for_play.clear()
-        logging.info(f'state: {AudioPlayerState(self._player.state).name}, event_for_play: {self.__event_for_play.is_set()}')
+        logging.info(f'instruction: {self._player.instruction.name}, state: {self._player.state.name}')
 
     def __play(self):
         logging.info(f'Play button was pressed.')
         state = self._player.state
         if state == AudioPlayerState.PLAYING:
             return
-        if state == AudioPlayerState.NOT_READY:
+        elif state == AudioPlayerState.POSED:
+            pass
+        elif state == AudioPlayerState.READY:
+            pass
+        elif state == AudioPlayerState.NOT_READY:
             return
-        if state == AudioPlayerState.CLOSING:
+        elif state == AudioPlayerState.CLOSING:
+            return
+        elif state == AudioPlayerState.CLOSED:
             return
 
         # if threads are not alive, generate new threads and start
@@ -218,51 +237,83 @@ class ControllerFrame(customtkinter.CTkFrame):
             self.__thread_for_play = Thread(target=self._player.loop_for_playback, daemon=False)
             self.__thread_for_play.start()
 
-        self.__event_for_play.set() # to run threads
-        logging.info(f'state: {AudioPlayerState(self._player.state).name}, event_for_play: {self.__event_for_play.is_set()}')
+        self._player.instruction = AudioPlayerInstruction.PLAY
+        logging.info(f'instruction: {self._player.instruction.name}, state: {self._player.state.name}')
 
-    def __pose(self): # kill living threads
+    def __pose(self):
         logging.info(f'Pose button was pressed.')
         state = self._player.state
-        if state != AudioPlayerState.PLAYING:
+        if state == AudioPlayerState.PLAYING:
+            pass
+        elif state == AudioPlayerState.POSED:
             return
-        
-        self.__event_for_play.clear() # not to run threads
-        logging.info(f'state: {AudioPlayerState(self._player.state).name}, event_for_play: {self.__event_for_play.is_set()}')
+        elif state == AudioPlayerState.READY:
+            return
+        elif state == AudioPlayerState.NOT_READY:
+            return
+        elif state == AudioPlayerState.CLOSING:
+            return
+        elif state == AudioPlayerState.CLOSED:
+            return
 
+        self._player.instruction = AudioPlayerInstruction.POSE
+        logging.info(f'instruction: {self._player.instruction.name}, state: {self._player.state.name}')
+    
     def __forward(self):
         logging.info(f'Forward button was pressed.')
         state = self._player.state
-        if state == AudioPlayerState.NOT_READY:
+        if state == AudioPlayerState.PLAYING:
+            pass
+        elif state == AudioPlayerState.POSED:
+            pass
+        elif state == AudioPlayerState.READY:
+            pass
+        elif state == AudioPlayerState.NOT_READY:
             return
-        if state == AudioPlayerState.CLOSING:
+        elif state == AudioPlayerState.CLOSING:
+            return
+        elif state == AudioPlayerState.CLOSED:
             return
         
         self._player.forward()
 
-        pos = self._audio.current_pos
-        if not self.__event_for_play.is_set():
+        if state != AudioPlayerState.PLAYING:
+            pos = self._audio.current_pos
             self.__update_audio_progress_bar(pos)
-        if not self.__event_for_play.is_set():
             self.master._audio_form_frame.update_audio_form(pos)
 
     def __backward(self):
         logging.info(f'Backward button was pressed.')
         state = self._player.state
-        if state == AudioPlayerState.NOT_READY:
+        if state == AudioPlayerState.PLAYING:
+            pass
+        elif state == AudioPlayerState.POSED:
+            pass
+        elif state == AudioPlayerState.READY:
+            pass
+        elif state == AudioPlayerState.NOT_READY:
             return
-        if state == AudioPlayerState.CLOSING:
+        elif state == AudioPlayerState.CLOSING:
+            return
+        elif state == AudioPlayerState.CLOSED:
             return
         
         self._player.backward()
 
-        pos = self._audio.current_pos
-        if not self.__event_for_play.is_set():
+        if state != AudioPlayerState.PLAYING:
+            pos = self._audio.current_pos
             self.__update_audio_progress_bar(pos)
-        if not self.__event_for_play.is_set():
             self.master._audio_form_frame.update_audio_form(pos)
 
+    # def __clip_A(self):
+    #     self._clip_A_button.configure(fg_color='orange')
+    
+    # def __clip_B(self):
+    #     self._clip_B_button.configure(fg_color='orange')
+
     def __volume(self):
+        logging.info(f'Volume button was pressed.')
+        
         volume_controller_frame_height = 100
         volume_controller_frame_width = 200
         # volume_button_height = self._volume_button.winfo_height()
@@ -278,30 +329,41 @@ class ControllerFrame(customtkinter.CTkFrame):
         self._volume_controller_frame.open(geometry)
 
     def __loop(self):
-        loop = self._player.loop_play
+        logging.info(f'Loop button was pressed.')
+
+        loop = self._player.loop
         if loop:
-            self._player.loop_play = False
+            self._player.loop = False
             self._loop_off_button.grid()
             self._loop_button.grid_remove()
         else:
-            self._player.loop_play = True
+            self._player.loop = True
             self._loop_button.grid()
             self._loop_off_button.grid_remove()
 
     def __press_progress_bar(self, event:tkinter.Event):
+        logging.info(f'Progress bar was pressed.')
         # logging.info(event)
 
         # pause if playing
         state = self._player.state
-        if state == AudioPlayerState.NOT_READY:
+        if state == AudioPlayerState.PLAYING:
+            pass
+        elif state == AudioPlayerState.POSED:
+            pass
+        elif state == AudioPlayerState.READY:
+            pass
+        elif state == AudioPlayerState.NOT_READY:
             return
-        if state == AudioPlayerState.CLOSING:
+        elif state == AudioPlayerState.CLOSING:
+            return
+        elif state == AudioPlayerState.CLOSED:
             return
 
         if state == AudioPlayerState.PLAYING:
-            self.__event_for_play.clear()
+            self._player.instruction = AudioPlayerInstruction.POSE
+            logging.info(f'instruction: {self._player.instruction.name}, state: {self._player.state.name}')
             self.__is_temporary_posed = True
-            logging.info(f'state: {AudioPlayerState(self._player.state).name}, event_for_play: {self.__event_for_play.is_set()}')
         else:
             self.__is_temporary_posed = False
 
@@ -319,12 +381,21 @@ class ControllerFrame(customtkinter.CTkFrame):
         self.master._audio_form_frame.update_audio_form(pos)
 
     def __drag_progress_bar(self, event:tkinter.Event):
+        logging.info(f'Progress bar is being dragging.')
         # logging.info(event)
 
         state = self._player.state
-        if state == AudioPlayerState.NOT_READY:
+        if state == AudioPlayerState.PLAYING:
+            pass
+        elif state == AudioPlayerState.POSED:
+            pass
+        elif state == AudioPlayerState.READY:
+            pass
+        elif state == AudioPlayerState.NOT_READY:
             return
-        if state == AudioPlayerState.CLOSING:
+        elif state == AudioPlayerState.CLOSING:
+            return
+        elif state == AudioPlayerState.CLOSED:
             return
 
         scaling_factor = self._audio_progress_bar._get_widget_scaling()
@@ -341,32 +412,50 @@ class ControllerFrame(customtkinter.CTkFrame):
         self.master._audio_form_frame.update_audio_form(pos)
 
     def __release_progress_bar(self, event:tkinter.Event):
+        logging.info(f'Progress bar was released.')
         # logging.info(event)
                       
         state = self._player.state
-        if state == AudioPlayerState.NOT_READY:
+        if state == AudioPlayerState.PLAYING:
+            pass
+        elif state == AudioPlayerState.POSED:
+            pass
+        elif state == AudioPlayerState.READY:
+            pass
+        elif state == AudioPlayerState.NOT_READY:
             return
-        if state == AudioPlayerState.CLOSING:
+        elif state == AudioPlayerState.CLOSING:
             return
-        if self.__is_temporary_posed:
-            self.__event_for_play.set()
-            logging.info(f'state: {AudioPlayerState(self._player.state).name}, event_for_play: {self.__event_for_play.is_set()}')
+        elif state == AudioPlayerState.CLOSED:
+            return
 
-    def __loop_for_updating_audio_progress_bar(self):
+        if self.__is_temporary_posed:
+            self._player.instruction = AudioPlayerInstruction.PLAY
+            self.__is_temporary_posed = False
+            logging.info(f'instruction: {self._player.instruction.name}, state: {self._player.state.name}')
+
+    def __update_audio_progress_bar_when_playing(self):
+        is_updated_when_not_playing = False
+
         while True:
             state = self._player.state
-            if state == AudioPlayerState.NOT_READY:
-                break
-            if state == AudioPlayerState.CLOSING:
-                break
-                
-            if not self.__event_for_play.is_set():
-                if state == AudioPlayerState.READY:
-                    self.__update_audio_progress_bar(0)
-                self.__event_for_play.wait()
+            if state == AudioPlayerState.PLAYING:
+                self.__update_audio_progress_bar(self._audio.current_pos)
+                is_updated_when_not_playing = True
+            elif state == AudioPlayerState.POSED:
+                pass
+            elif state == AudioPlayerState.READY:
+                if is_updated_when_not_playing:
+                    self.__update_audio_progress_bar(self._audio.current_pos)
+                    is_updated_when_not_playing = False
+            elif state == AudioPlayerState.NOT_READY:
+                pass
+            elif state == AudioPlayerState.CLOSING:
+                return
+            elif state == AudioPlayerState.CLOSED:
+                return
             
-            self.__update_audio_progress_bar(self._audio.current_pos)
-            time.sleep(0.2)
+            time.sleep(0.1)
 
     def __update_audio_progress_bar(self, current_pos):
         val = current_pos / self._audio.nframes
@@ -374,31 +463,45 @@ class ControllerFrame(customtkinter.CTkFrame):
         self._audio_progress_bar.set(val)
         self._audio_progress_label.configure(text=self.__pos_to_time(current_pos) + " / " + self.__pos_to_time(self._audio.nframes-1))
         self.update_idletasks()
-        # self.update()
 
-    def __loop_for_updating_audio_form(self):
+    def __update_audio_form_when_playing(self):
+        is_updated_when_not_playing = False
+
         while True:
             state = self._player.state
-            if state == AudioPlayerState.NOT_READY:
-                break
-            if state == AudioPlayerState.CLOSING:
-                break
-
-            if not self.__event_for_play.is_set():
-                if state == AudioPlayerState.READY:
-                    self.master._audio_form_frame.update_audio_form(0)
-                self.__event_for_play.wait()
-                
-            self.master._audio_form_frame.update_audio_form(self._audio.current_pos)
+            if state == AudioPlayerState.PLAYING:
+                self.master._audio_form_frame.update_audio_form(self._audio.current_pos)
+                is_updated_when_not_playing = True
+            elif state == AudioPlayerState.POSED:
+                pass
+            elif state == AudioPlayerState.READY:
+                if is_updated_when_not_playing:
+                    self.master._audio_form_frame.update_audio_form(self._audio.current_pos)
+                    is_updated_when_not_playing = False
+            elif state == AudioPlayerState.NOT_READY:
+                pass
+            elif state == AudioPlayerState.CLOSING:
+                return
+            elif state == AudioPlayerState.CLOSED:
+                return
+ 
             time.sleep(0.1)
 
-    def __loop_for_updating_buttons(self):
+    def __update_buttons_when_playing(self):
         while True:
             state = self._player.state
-            if state == AudioPlayerState.NOT_READY:
-                break
-            if state == AudioPlayerState.CLOSING:
-                break
+            if state == AudioPlayerState.PLAYING:
+                pass
+            elif state == AudioPlayerState.POSED:
+                pass
+            elif state == AudioPlayerState.READY:
+                pass
+            elif state == AudioPlayerState.NOT_READY:
+                return
+            elif state == AudioPlayerState.CLOSING:
+                return
+            elif state == AudioPlayerState.CLOSED:
+                return
 
             if state == AudioPlayerState.PLAYING:
                 self._audio_pose_button.grid()
@@ -432,6 +535,10 @@ class ControllerFrame(customtkinter.CTkFrame):
         volume_button_dark_image_path = "../Image/volume_dark.png"
         volume_button_off_light_image_path = "../Image/volume_off_light.png"
         volume_button_off_dark_image_path = "../Image/volume_off_dark.png"
+        # clip_A_button_light_image_path = "../Image/clip_A_light.png"
+        # clip_A_button_dark_image_path = "../Image/clip_A_dark.png"
+        # clip_B_button_light_image_path = "../Image/clip_B_light.png"
+        # clip_B_button_dark_image_path = "../Image/clip_B_dark.png"
 
         self.__load_icon(self._audio_play_button, play_button_light_image_path, play_button_dark_image_path, (30, 30))
         self.__load_icon(self._audio_pose_button, pose_button_light_image_path, pose_button_dark_image_path, (30, 30))
@@ -441,7 +548,9 @@ class ControllerFrame(customtkinter.CTkFrame):
         self.__load_icon(self._loop_off_button, loop_off_button_light_image_path, loop_off_button_dark_image_path, (20, 20))
         self.__load_icon(self._volume_button, volume_button_light_image_path, volume_button_dark_image_path, (20, 20))
         self.__load_icon(self._volume_off_button, volume_button_off_light_image_path, volume_button_off_dark_image_path, (20, 20))
-        
+        # self.__load_icon(self._clip_A_button, clip_A_button_light_image_path, clip_A_button_dark_image_path, (15, 15))
+        # self.__load_icon(self._clip_B_button, clip_B_button_light_image_path, clip_B_button_dark_image_path, (15, 15))        
+
     def __load_icon(self, button:customtkinter.CTkButton, light_path:str, dark_icon_path:str, size:tuple[int, int]):
         try:
             light_image = PIL.Image.open(light_path)
@@ -469,7 +578,7 @@ class VolumeControlloerFrame(customtkinter.CTkToplevel):
         self.overrideredirect(boolean=True)
         self.attributes("-transparentcolor", self._apply_appearance_mode(self._fg_color))
 
-        self._frame = customtkinter.CTkFrame(self, corner_radius=6, border_width=0)
+        self._frame = customtkinter.CTkFrame(self, corner_radius=6, border_width=1)
         self._slider = customtkinter.CTkSlider(self._frame, height=18, from_=0, to=100, number_of_steps=101, variable=customtkinter.Variable(value=100), command=self.__slide)
         self._label = customtkinter.CTkLabel(self._frame, text=f"100 / 100", font=('consolas', FONT_SIZE, 'bold'))
 
@@ -482,8 +591,8 @@ class VolumeControlloerFrame(customtkinter.CTkToplevel):
         self._slider.grid(row=0, column=0, sticky='NSWE', padx=(20, 20), pady=(20, 0))
         self._label.grid(row=1, column=0, sticky='E', padx=(20, 20), pady=(10, 15))
 
-        self.master.bind("<Button-1>", lambda event: self.close())
-        self.master.bind("<Configure>", lambda event: self.close())
+        self.master.bind("<Button-1>", lambda event: self.close(), add=True)
+        self.master.bind("<Configure>", lambda event: self.close(), add=True)
 
         self.resizable(width=False, height=False)
         self.transient(self.master)

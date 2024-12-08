@@ -5,6 +5,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
 from audio import Audio
 from common import *
+from threading import Lock
 
 
 AUDIO_FORM_RADIUS = 0.5 # sec
@@ -52,6 +53,8 @@ class AudioFormFrame(customtkinter.CTkFrame):
         self.__canvas = FigureCanvasTkAgg(self.__fig, master=self)
         self.__canvas.get_tk_widget().grid(row=0, column=0, padx=(5, 5), pady=(5, 5), sticky='WE')
 
+        self.lock = Lock()
+
     def load(self, audio:Audio):
         self.__audio = audio
         audio_framerate = self.__audio.framerate
@@ -77,18 +80,19 @@ class AudioFormFrame(customtkinter.CTkFrame):
         return self.__frames[start:end]
 
     def update_audio_form(self, current_pos):
-        y = self.__read_frames(current_pos)
-        if y is None:
-            return
+        with self.lock:
+            y = self.__read_frames(current_pos)
+            if y is None:
+                return
 
-        x = np.arange(-self.__audio_form_radius, self.__audio_form_radius + 1)
+            x = np.arange(-self.__audio_form_radius, self.__audio_form_radius + 1)
 
-        self.__ax.cla()
-        self.__ax.axis('off')
-        self.__ax.set_xlim(-self.__audio_form_radius, self.__audio_form_radius)
-        self.__ax.set_ylim(-1, 1)
-        self.__ax.vlines(0, -1, 1, colors='#888888', linewidth=1.5)
-        self.__ax.plot(x, y)
+            self.__ax.cla()
+            self.__ax.axis('off')
+            self.__ax.set_xlim(-self.__audio_form_radius, self.__audio_form_radius)
+            self.__ax.set_ylim(-1, 1)
+            self.__ax.vlines(0, -1, 1, colors='#888888', linewidth=1.5)
+            self.__ax.plot(x, y)
 
         self.__canvas.draw()
         # self.__canvas.flush_events()

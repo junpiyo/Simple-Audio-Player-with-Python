@@ -14,6 +14,14 @@ class AudioPlayerState(IntEnum):
     READY = auto()
     NOT_READY = auto()
     CLOSING = auto()
+    CLOSED = auto()
+
+
+class AudioPlayerInstruction(IntEnum):
+    PLAY = auto()
+    POSE = auto()
+    CLOSE = auto()
+    STOP = auto()
 
 
 class AudioTag():
@@ -105,75 +113,92 @@ class Audio():
 
 
 class AudioPlayer():
-    def __init__(self, event_for_play: Event, volume=100, loop_play=True):
+    def __init__(self, volume=100, loop=True):
         self.__volume = volume
-        self.__loop_play = loop_play
-        self.__event_for_play = event_for_play
+        self.__loop = loop
         self.__state_lock = Lock()
         self.__volume_lock = Lock()
-        self.__loop_play_lock = Lock()
+        self.__loop_lock = Lock()
+        self.__instruction_lock = Lock()
+        self.__instruction = AudioPlayerInstruction.STOP
         self.__state = AudioPlayerState.NOT_READY
-        logging.info(f'state: {AudioPlayerState(self.__state).name}, event_for_play: {self.__event_for_play.is_set()}')
+        logging.info(f'instruction: {self.instruction.name}, state: {self.state.name}')
 
     def load(self, audio:Audio):
         self.__audio = audio
         self.state = AudioPlayerState.READY
-        logging.info(f'state: {AudioPlayerState(self.__state).name}, event_for_play: {self.__event_for_play.is_set()}')
+        logging.info(f'instruction: {self.instruction.name}, state: {self.state.name}')
 
     def close(self):
-        self.state = AudioPlayerState.CLOSING
-        logging.info(f'state: {AudioPlayerState(self.__state).name}, event_for_play: {self.__event_for_play.is_set()}')
+        if self.state == AudioPlayerState.PLAYING:
+            self.instruction = AudioPlayerInstruction.CLOSE
+            self.state = AudioPlayerState.CLOSING
+        elif self.state == AudioPlayerState.POSED:
+            self.instruction = AudioPlayerInstruction.CLOSE
+            self.state = AudioPlayerState.CLOSING
+        elif self.state == AudioPlayerState.READY:
+            self.instruction = AudioPlayerInstruction.CLOSE
+            self.state = AudioPlayerState.CLOSING
+        elif self.state == AudioPlayerState.NOT_READY:
+            pass
+        elif self.state == AudioPlayerState.CLOSING:
+            pass
 
-    def loop_for_playback(self):
-        if self.state == AudioPlayerState.READY or self.state == AudioPlayerState.POSED:
-            self.state = AudioPlayerState.PLAYING
-            logging.info(f'state: {AudioPlayerState(self.__state).name}, event_for_play: {self.__event_for_play.is_set()}')
-        else:
-            return
-        
+    def loop_for_playback(self):        
         while True:
-            self.play()
-            if self.state == AudioPlayerState.CLOSING or self.state == AudioPlayerState.NOT_READY:
-                return
-            
-            if self.__loop_play:
-                continue
-            else:
-                time.sleep(1.0)
-                self.state = AudioPlayerState.READY
-                self.__event_for_play.clear()
-                logging.info(f'state: {AudioPlayerState(self.__state).name}, event_for_play: {self.__event_for_play.is_set()}')
+            self.__play()
+            if self.instruction == AudioPlayerInstruction.CLOSE:
+                self.state = AudioPlayerState.CLOSED
+                break
 
-    def play(self):        
+            if not self.__loop:
+                break
+
+    def __play(self):
         try:
             p = pyaudio.PyAudio()
             stream = p.open(format=p.get_format_from_width(self.__audio.samplewidth),
                             channels=self.__audio.nchannels, rate=self.__audio.framerate,
-                            frames_per_buffer=CHUNK_SIZE, output=True)
+                            frames_per_buffer=CHUNK_SIZE*10, output=True)
 
+            # loop for play
             while True:
-                if self.state == AudioPlayerState.CLOSING or self.state == AudioPlayerState.NOT_READY:
+                if self.__instruction == AudioPlayerInstruction.CLOSE:
+                    self.state = AudioPlayerState.CLOSING
+                    logging.info(f'instruction: {self.instruction.name}, state: {self.state.name}')
                     break
-                if not self.__event_for_play.is_set():
+
+                if self.__instruction == AudioPlayerInstruction.POSE:
                     self.state = AudioPlayerState.POSED
-                    logging.info(f'state: {AudioPlayerState(self.__state).name}, event_for_play: {self.__event_for_play.is_set()}')
-                    self.__event_for_play.wait()
+                    logging.info(f'instruction: {self.instruction.name}, state: {self.state.name}')
+                    while True:
+                        if self.__instruction != AudioPlayerInstruction.POSE:
+                            break
+                        time.sleep(0.1)
 
-                    if self.state == AudioPlayerState.CLOSING or self.state == AudioPlayerState.NOT_READY:
-                        break
+                if self.__instruction == AudioPlayerInstruction.STOP:
+                    self.state = AudioPlayerState.READY
+                    logging.info(f'instruction: {self.instruction.name}, state: {self.state.name}')
+                    while True:
+                        if self.__instruction != AudioPlayerInstruction.STOP:
+                            break
+                        time.sleep(0.1)
 
+                if self.__instruction == AudioPlayerInstruction.PLAY:
                     self.state = AudioPlayerState.PLAYING
-                    logging.info(f'state: {AudioPlayerState(self.__state).name}, event_for_play: {self.__event_for_play.is_set()}')
+                    logging.info(f'instruction: {self.instruction.name}, state: {self.state.name}')
 
-                if self.state == AudioPlayerState.PLAYING:
                     data = self.__audio.read_frames(CHUNK_SIZE)
                     if len(data) == 0:
                         self.__audio.rewind()
+                        self.state = AudioPlayerState.READY
+                        logging.info(f'instruction: {self.instruction.name}, state: {self.state.name}')
                         break
                     stream.write(self.__controll_volume(data))
             
             stream.close()
             p.terminate()
+
         except:
             print('Error: cannot play the audio')
             return
@@ -216,6 +241,16 @@ class AudioPlayer():
             self.__state = state
 
     @property
+    def instruction(self):
+        with self.__instruction_lock:
+            return self.__instruction
+
+    @instruction.setter
+    def instruction(self, instruction:AudioPlayerInstruction):
+        with self.__instruction_lock:
+            self.__instruction = instruction
+
+    @property
     def volume(self):
         with self.__volume_lock:
             return self.__volume
@@ -228,11 +263,11 @@ class AudioPlayer():
             self.__volume = volume
 
     @property
-    def loop_play(self):
-        with self.__loop_play_lock:
-            return self.__loop_play
+    def loop(self):
+        with self.__loop_lock:
+            return self.__loop
 
-    @loop_play.setter
-    def loop_play(self, loop_play:bool):
-        with self.__loop_play_lock:
-            self.__loop_play = loop_play
+    @loop.setter
+    def loop(self, loop:bool):
+        with self.__loop_lock:
+            self.__loop = loop
