@@ -207,7 +207,6 @@ class ControllerFrame(customtkinter.CTkFrame):
                 time.sleep(0.05)
                 continue
             if self.__thread_for_audio_form.is_alive():
-                self.is_wave_form_displayed = True
                 self.update()
                 time.sleep(0.05)
                 continue
@@ -471,14 +470,11 @@ class ControllerFrame(customtkinter.CTkFrame):
         is_updated_during_ready = False
 
         while True:
-            if not self.is_wave_form_displayed:
-                time.sleep(0.1)
-                continue
-
             state = self._player.state
             if state == AudioPlayerState.PLAYING:
-                self.master._audio_form_frame.update_audio_form(self._audio.current_pos)
-                is_updated_during_ready = True
+                if self.is_wave_form_displayed:
+                    self.master._audio_form_frame.update_audio_form(self._audio.current_pos)
+                    is_updated_during_ready = True
             elif state == AudioPlayerState.POSED:
                 pass
             elif state == AudioPlayerState.READY:
