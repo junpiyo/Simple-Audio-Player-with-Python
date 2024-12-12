@@ -31,7 +31,7 @@ class SimpleAudioPlayer(customtkinter.CTk):
         self._file_dialog_frame.grid(row=3, column=0, padx=(10, 10), pady=(10, 10), sticky="WE")
 
         # attributes
-        # self.wm_attributes('-alpha', 0.9)
+        # self.attributes('-alpha', 0.9)
 
         # protocol
         self.protocol('WM_DELETE_WINDOW', self.close)

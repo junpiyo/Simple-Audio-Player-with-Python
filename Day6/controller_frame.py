@@ -12,6 +12,8 @@ class ControllerFrame(customtkinter.CTkFrame):
     def __init__(self, master, **kwargs):
         super().__init__(master, **kwargs)
 
+        self.__is_wave_form_displayed = True
+
         # threads
         self.__thread_for_play = Thread()
         self.__thread_for_progress_bar = Thread()
@@ -205,6 +207,7 @@ class ControllerFrame(customtkinter.CTkFrame):
                 time.sleep(0.05)
                 continue
             if self.__thread_for_audio_form.is_alive():
+                self.is_wave_form_displayed = True
                 self.update()
                 time.sleep(0.05)
                 continue
@@ -435,19 +438,19 @@ class ControllerFrame(customtkinter.CTkFrame):
             logging.info(f'instruction: {self._player.instruction.name}, state: {self._player.state.name}')
 
     def __update_audio_progress_bar_when_playing(self):
-        is_updated_when_not_playing = False
+        is_updated_during_ready = False
 
         while True:
             state = self._player.state
             if state == AudioPlayerState.PLAYING:
                 self.__update_audio_progress_bar(self._audio.current_pos)
-                is_updated_when_not_playing = True
+                is_updated_during_ready = True
             elif state == AudioPlayerState.POSED:
                 pass
             elif state == AudioPlayerState.READY:
-                if is_updated_when_not_playing:
+                if is_updated_during_ready:
                     self.__update_audio_progress_bar(self._audio.current_pos)
-                    is_updated_when_not_playing = False
+                    is_updated_during_ready = False
             elif state == AudioPlayerState.NOT_READY:
                 pass
             elif state == AudioPlayerState.CLOSING:
@@ -465,19 +468,23 @@ class ControllerFrame(customtkinter.CTkFrame):
         self.update_idletasks()
 
     def __update_audio_form_when_playing(self):
-        is_updated_when_not_playing = False
+        is_updated_during_ready = False
 
         while True:
+            if not self.is_wave_form_displayed:
+                time.sleep(0.1)
+                continue
+
             state = self._player.state
             if state == AudioPlayerState.PLAYING:
                 self.master._audio_form_frame.update_audio_form(self._audio.current_pos)
-                is_updated_when_not_playing = True
+                is_updated_during_ready = True
             elif state == AudioPlayerState.POSED:
                 pass
             elif state == AudioPlayerState.READY:
-                if is_updated_when_not_playing:
+                if is_updated_during_ready:
                     self.master._audio_form_frame.update_audio_form(self._audio.current_pos)
-                    is_updated_when_not_playing = False
+                    is_updated_during_ready = False
             elif state == AudioPlayerState.NOT_READY:
                 pass
             elif state == AudioPlayerState.CLOSING:
@@ -568,6 +575,13 @@ class ControllerFrame(customtkinter.CTkFrame):
         else:
             button.configure(image=customtkinter.CTkImage(light_image=light_image, dark_image=dark_image, size=size))
             button.configure(text="", fg_color="transparent")
+
+    @property
+    def is_wave_form_displayed(self):
+        return self.__is_wave_form_displayed
+    @is_wave_form_displayed.setter
+    def is_wave_form_displayed(self, flag):
+        self.__is_wave_form_displayed = flag
 
 
 class VolumeControlloerFrame(customtkinter.CTkToplevel):

@@ -1,11 +1,16 @@
 import PIL.Image
 from enum import IntEnum, auto
 import pyaudio
-from threading import Lock, Event
+from threading import Lock
 import numpy as np
 import time
+import wave
+import PIL.Image
+from pydub import AudioSegment
+from mutagen.id3 import ID3
+from io import BytesIO
 from common import *
-
+import os
 
 
 class AudioPlayerState(IntEnum):
@@ -24,12 +29,13 @@ class AudioPlayerInstruction(IntEnum):
     STOP = auto()
 
 
-class AudioTag():
-    def __init__(self, cover_art:PIL.Image=None, album:str=None, artist:str=None, title:str=None):
+class Tag():
+    def __init__(self, cover_art:PIL.Image=None, album:str=None, artist:str=None, title:str=None, lyrics:str=None):
         self.__cover_art = cover_art
         self.__album = album
         self.__artist = artist
         self.__title = title
+        self.__lyrics = lyrics
 
     @property
     def cover_art(self):
@@ -43,15 +49,19 @@ class AudioTag():
     @property
     def title(self):
         return self.__title
+    @property
+    def lyrics(self):
+        return self.__lyrics   
 
 
-class Audio():
-    def __init__(self, nchannels:int, samplewidth:int, framerate:int, frames:bytes):
+class Raw():
+    def __init__(self,nchannels:int=None, samplewidth:int=None, framerate:int=None, frames:bytes=None, nframes:int=None):
         self.__nchannels = nchannels
         self.__samplewidth = samplewidth
         self.__framerate = framerate
         self.__frames = frames
-        self.__nframes = round(len(frames) / samplewidth / nchannels)
+        self.__nframes = nframes
+
         self.__current_pos = 0
         self.__next_pos = 0
         self.__lock = Lock()
@@ -92,13 +102,12 @@ class Audio():
     def nframes(self):
         return self.__nframes
     @property
+    def frames(self):
+        return self.__frames
+    @property
     def current_pos(self):
         with self.__lock:
             return self.__current_pos
-    @property
-    def frames(self):
-        return self.__frames
-
     @current_pos.setter
     def current_pos(self, pos:int): # seeks to the specified position
         with self.__lock:
@@ -110,6 +119,97 @@ class Audio():
                 self.__current_pos = pos
 
             self.__next_pos = self.__current_pos
+
+
+class Audio():
+    def __init__(self, file_path:str):
+        self.__file_path = file_path
+        self.__raw:Raw = None
+        self.__tag:Tag = None
+
+    def open_file(self, is_audio:bool=False):
+        if os.path.splitext(self.__file_path)[1] == '.wav':
+            return self.__open_wav(is_audio)
+        elif os.path.splitext(self.__file_path)[1] == '.mp3':
+            return self.__open_mp3(is_audio)
+        else:
+            return False
+
+    def __open_mp3(self, is_audio:bool=False):
+        # load audio data
+        if is_audio:
+            try:
+                mp3_data = AudioSegment.from_mp3(self.__file_path)
+                framerate = mp3_data.frame_rate
+                nchannels = mp3_data.channels
+                samplewidth = mp3_data.sample_width
+                frames = bytes(mp3_data.get_array_of_samples())
+                nframes = round(len(frames) / samplewidth / nchannels)
+
+                logging.info(f"{self.__file_path} has been loaded")
+                logging.info(f'{nchannels}ch {samplewidth * 8}bit {framerate}Hz')
+                self.__raw = Raw(nchannels, samplewidth, framerate, frames, nframes)
+            
+            except FileNotFoundError:
+                logging.info(f"Error: cannot find {self.__file_path}")
+                return False
+
+        # load tags
+        try:
+            tags = ID3(self.__file_path)
+            print(tags.pprint())
+
+            attached_picture_data = tags.get("APIC:").data
+            cover_art = PIL.Image.open(BytesIO(attached_picture_data))
+            artist = tags.get('TPE1')
+            album = tags.get('TALB')
+            title = tags.get('TIT2')
+            if title is None:
+                title=os.path.splitext(os.path.basename(self.__file_path))[0]
+
+            lyrics_keys = [key for key in tags.keys() if 'USLT' in key]
+            if len(lyrics_keys) != 0:
+                lyrics = tags.get(lyrics_keys[0])
+            else:
+                lyrics = None
+
+            self.__tag = Tag(cover_art, album, artist, title, lyrics)
+        except:
+            logging.info("Error: cannot get some tags")
+            return False
+        
+        return True
+
+    def __open_wav(self, is_audio:bool=False):
+        #load wave data
+        if is_audio:
+            try:
+                wave_data = wave.open(self.__file_path, mode='rb')
+                nchannels, samplewidth, framerate, nframes, _, _ = wave_data.getparams()
+                frames = wave_data.readframes(-1)
+                nframes = round(len(frames) / samplewidth / nchannels)
+
+                logging.info(f"{self.__file_path} has been loaded")
+                logging.info(f'{nchannels}ch {samplewidth * 8}bit {framerate}Hz')
+                self.__raw = Raw(nchannels, samplewidth, framerate, frames, nframes)
+            except FileNotFoundError:
+                logging.info(f"Error: cannot find {self.__file_path}")
+                return False
+
+        # load tags
+        self.__tag = Tag(title=os.path.splitext(os.path.basename(self.__file_path))[0])
+
+        return True
+
+    @property
+    def file_path(self):
+        return self.__file_path
+    @property
+    def raw(self):
+        return self.__raw
+    @property
+    def tag(self):
+        return self.__tag
 
 
 class AudioPlayer():
@@ -140,9 +240,9 @@ class AudioPlayer():
             self.instruction = AudioPlayerInstruction.CLOSE
             self.state = AudioPlayerState.CLOSING
         elif self.state == AudioPlayerState.NOT_READY:
-            pass
+            self.state = AudioPlayerState.CLOSED
         elif self.state == AudioPlayerState.CLOSING:
-            pass
+            self.state = AudioPlayerState.CLOSED
 
     def loop_for_playback(self):        
         while True:
